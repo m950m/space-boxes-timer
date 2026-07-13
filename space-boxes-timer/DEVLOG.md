@@ -115,3 +115,33 @@ Established independent, reusable business-logic modules for task lifecycle mana
 Notes
 
 The task model enforces one running task, the timer tracks elapsed time without rendering concerns, storage uses versioned local data, statistics aggregate session history, and modal helpers prepare presentation data without manipulating HTML. Application bootstrap and UI integration remain unfinished.
+
+---
+
+## Sprint 4
+
+Date
+
+2026-07-13
+
+Task
+
+Completed Tasks 13-20: UI and timer integration, session summary, automatic statistics, responsive integration review, accessibility, performance, and final review. The Task Card Component and Application Bootstrap were completed as required by the integration.
+
+Files Modified
+
+js/app.js
+
+js/ui.js
+
+TASKS.md
+
+DEVLOG.md
+
+Reason
+
+Connected the existing interface to the independent task, timer, storage, statistics, modal, and utility modules so the application supports a complete persisted focus-session lifecycle.
+
+Notes
+
+Application orchestration now restores state, registers event handlers, persists changes, coordinates one active timer, refreshes statistics, and handles expected failures. UI rendering now uses the existing task-card template, targeted timer updates, event delegation, state-aware controls, settings rendering, accessible modal focus behavior, and session-summary feedback. A headless-browser integration test verified create, start, pause, resume, finish, summary, persistence, and statistics behavior. No HTML, CSS, or Sprint 3 business-logic module was changed.
