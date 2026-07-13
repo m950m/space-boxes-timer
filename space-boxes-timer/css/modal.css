@@ -1,0 +1,209 @@
+/* Defines styles for modal dialogs and their states. */
+
+.modal {
+  position: fixed;
+  z-index: var(--z-index-modal);
+  display: grid;
+  place-items: center;
+  inset: 0;
+  padding: var(--space-4);
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgb(3 5 12 / 72%);
+  backdrop-filter: blur(var(--blur-md));
+}
+
+.modal__dialog {
+  position: relative;
+  inline-size: min(100%, var(--container-md));
+  max-block-size: min(44rem, calc(100vh - var(--space-8)));
+  overflow: auto;
+  border: 1px solid rgb(91 140 255 / 45%);
+  border-radius: var(--radius-xl);
+  background-color: rgb(16 22 42 / 94%);
+  box-shadow: var(--shadow-xl), var(--glow-sm);
+  animation: space-fade-in var(--duration-normal) var(--ease-decelerate) both;
+}
+
+.modal__header,
+.modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+}
+
+.modal__header {
+  border-block-end: 1px solid var(--color-border);
+}
+
+.modal__footer {
+  border-block-start: 1px solid var(--color-border);
+}
+
+.modal__title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.modal__body {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-6);
+}
+
+.summary-hero {
+  display: grid;
+  place-items: center;
+  gap: var(--space-2);
+  border: 1px solid rgb(33 230 208 / 28%);
+  border-radius: var(--radius-lg);
+  background: var(--gradient-glow);
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.summary-hero__label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.summary-hero__duration {
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+  text-shadow: var(--glow-accent);
+}
+
+.summary-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.summary-detail {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: rgb(7 10 20 / 45%);
+  padding: var(--space-3);
+}
+
+.summary-detail__label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.summary-detail__value {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.focus-rating {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.focus-rating__label {
+  font-weight: var(--font-weight-medium);
+}
+
+.focus-rating__options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.rating-option {
+  display: grid;
+  min-block-size: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.rating-option:hover,
+.rating-option[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background-color: rgb(33 230 208 / 12%);
+  box-shadow: var(--glow-accent);
+  color: var(--color-accent);
+}
+
+.modal.is-closing .modal__dialog {
+  animation-direction: reverse;
+}
+
+@media (max-width: 32rem) {
+  .modal {
+    padding: var(--space-2);
+  }
+
+  .modal__header,
+  .modal__footer,
+  .modal__body {
+    padding: var(--space-4);
+  }
+
+  .modal__footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .modal__footer .button {
+    inline-size: 100%;
+  }
+}
+
+/* Observatory overlay treatment */
+.modal__backdrop {
+  background-color: rgb(2 4 14 / 82%);
+  background-image: radial-gradient(circle at 20% 20%, rgb(91 140 255 / 14%) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 76% 68%, rgb(33 230 208 / 12%) 0 1px, transparent 1.5px);
+  background-size: 11rem 11rem, 17rem 17rem;
+}
+
+.modal__dialog {
+  border-color: rgb(33 230 208 / 42%);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, rgb(18 29 55 / 96%), rgb(5 8 22 / 96%));
+  box-shadow: var(--shadow-xl), 0 0 4rem rgb(91 140 255 / 18%);
+}
+
+.modal__header,
+.modal__footer {
+  background-color: rgb(7 10 20 / 34%);
+}
+
+.modal__title {
+  font-family: var(--font-family-mono);
+}
+
+.summary-hero {
+  border-color: rgb(33 230 208 / 38%);
+  background: radial-gradient(circle, rgb(33 230 208 / 16%), rgb(91 140 255 / 8%) 48%, transparent 72%);
+}
+
+.summary-detail {
+  border-color: rgb(91 140 255 / 25%);
+  background-color: rgb(5 8 22 / 44%);
+}
+
+.rating-option {
+  border-radius: var(--radius-sm);
+  background-color: rgb(7 10 20 / 62%);
+}

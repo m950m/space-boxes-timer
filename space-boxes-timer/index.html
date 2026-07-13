@@ -1,0 +1,409 @@
+<!-- Defines the application document and loading points. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#070a14">
+    <meta
+      name="description"
+      content="Space Boxes Timer is a focused desktop productivity application."
+    >
+    <title>Space Boxes Timer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/animations.css">
+    <link rel="stylesheet" href="css/modal.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="background-layers" aria-hidden="true">
+        <div class="background-stars"></div>
+        <div class="background-nebula"></div>
+        <div class="background-grid"></div>
+        <div class="background-particles"></div>
+        <div class="background-noise"></div>
+      </div>
+
+      <header class="app-header">
+        <a class="brand" href="#main-content" aria-label="Space Boxes Timer home">
+          <span class="brand-mark" aria-hidden="true">SB</span>
+          <span>Space Boxes Timer</span>
+        </a>
+
+        <div class="header-actions">
+          <time id="current-date">Current date</time>
+          <a class="button button--secondary" href="#statistics">Statistics</a>
+          <button
+            class="icon-button"
+            id="open-settings-button"
+            type="button"
+            aria-label="Open settings"
+            aria-haspopup="dialog"
+            aria-controls="settings-modal"
+          >
+            Settings
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace" id="main-content">
+        <div class="workspace-main">
+          <section class="hero" aria-labelledby="welcome-title">
+            <p class="section-heading__eyebrow">Focus command center</p>
+            <h1 id="welcome-title">Make space for deep work.</h1>
+            <p>
+              Give each task a focused session, then let your progress speak for itself.
+            </p>
+          </section>
+
+          <section class="task-composer" aria-labelledby="new-task-title">
+            <div class="section-heading">
+              <div class="section-heading__copy">
+                <p class="section-heading__eyebrow">New space box</p>
+                <h2 class="section-heading__title" id="new-task-title">Create a task</h2>
+              </div>
+            </div>
+
+            <form id="task-form">
+              <div class="composer-fields">
+                <div class="form-field">
+                  <label class="form-field__label" for="task-title">Task title</label>
+                  <input
+                    class="text-input"
+                    id="task-title"
+                    name="title"
+                    type="text"
+                    placeholder="What needs your focus?"
+                    autocomplete="off"
+                    required
+                  >
+                </div>
+
+                <div class="form-field">
+                  <label class="form-field__label" for="task-category">Category</label>
+                  <select class="select-input" id="task-category" name="category">
+                    <option value="deep-work">Deep work</option>
+                    <option value="planning">Planning</option>
+                    <option value="learning">Learning</option>
+                    <option value="personal">Personal</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label class="form-field__label" for="task-priority">Priority</label>
+                  <select class="select-input" id="task-priority" name="priority">
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label class="form-field__label" for="task-duration">Estimated duration</label>
+                  <input
+                    class="text-input"
+                    id="task-duration"
+                    name="estimatedDuration"
+                    type="number"
+                    min="5"
+                    step="5"
+                    placeholder="Minutes"
+                    inputmode="numeric"
+                  >
+                </div>
+              </div>
+
+              <div class="composer-actions">
+                <button class="button button--primary" type="submit">Add task</button>
+              </div>
+            </form>
+          </section>
+
+          <section
+            class="panel active-session energy-core"
+            data-session-state="idle"
+            aria-labelledby="active-session-title"
+          >
+            <div class="energy-core__beam" aria-hidden="true">
+              <span class="energy-core__beam-line"></span>
+              <span class="energy-core__beam-signal"></span>
+            </div>
+
+            <div class="energy-core__heading section-heading">
+              <div class="section-heading__copy">
+                <p class="section-heading__eyebrow">Live session</p>
+                <h2 class="section-heading__title" id="active-session-title">Energy core</h2>
+              </div>
+              <span class="status-badge status-badge--paused" id="session-status">No active task</span>
+            </div>
+
+            <div class="energy-core__stage">
+              <div class="energy-core__particles particle-field" aria-hidden="true">
+                <span class="particle"></span>
+                <span class="particle"></span>
+                <span class="particle"></span>
+                <span class="particle"></span>
+              </div>
+              <div class="energy-core__ring energy-core__ring--outer" aria-hidden="true"></div>
+              <div class="energy-core__ring energy-core__ring--middle" aria-hidden="true"></div>
+              <div class="energy-core__ring energy-core__ring--inner" aria-hidden="true"></div>
+
+              <div class="energy-core__content active-session__content">
+                <p class="energy-core__status">Energy status: standby</p>
+                <p class="active-session__task" id="active-task-name">Choose a task to begin.</p>
+                <time class="task-timer energy-core__timer" id="active-task-timer" datetime="PT0S">00:00:00</time>
+                <div class="energy-core__progress" aria-label="Session progress placeholder">
+                  <span class="energy-core__progress-label">Session progress</span>
+                  <progress id="session-progress" max="100" value="0">0%</progress>
+                </div>
+              </div>
+            </div>
+
+            <div class="task-actions" aria-label="Active session controls">
+              <button class="button button--secondary" id="pause-session-button" type="button">Pause</button>
+              <button class="button button--secondary" id="resume-session-button" type="button">Resume</button>
+              <button class="button button--primary" id="finish-session-button" type="button">Finish</button>
+            </div>
+          </section>
+
+          <section aria-labelledby="tasks-title">
+            <div class="section-heading">
+              <div class="section-heading__copy">
+                <p class="section-heading__eyebrow">Task orbit</p>
+                <h2 class="section-heading__title" id="tasks-title">Your tasks</h2>
+                <p class="section-heading__description">One space box can be active at a time.</p>
+              </div>
+            </div>
+
+            <div
+              class="task-grid"
+              id="task-grid"
+              aria-live="polite"
+              aria-label="Task list"
+            ></div>
+
+            <template id="task-card-template">
+              <article class="task-card space-box" data-task-state="idle">
+                <div class="space-box__orbit" aria-hidden="true"></div>
+                <header class="task-card__header">
+                  <span class="task-card__category">Category</span>
+                  <span class="status-badge space-box__status">Idle</span>
+                </header>
+                <h3 class="task-card__title">Task title</h3>
+                <p class="task-card__description">Task details</p>
+                <time class="task-timer" datetime="PT0S">00:00:00</time>
+                <footer class="task-card__footer">
+                  <span class="space-box__state">Ready for focus</span>
+                </footer>
+              </article>
+            </template>
+
+            <div class="empty-state" id="task-empty-state" role="status">
+              <div class="empty-state__scene" aria-hidden="true">
+                <span class="empty-state__planet"></span>
+                <span class="empty-state__signal"></span>
+                <span class="empty-state__star empty-state__star--one"></span>
+                <span class="empty-state__star empty-state__star--two"></span>
+              </div>
+              <div class="empty-state__content">
+                <p class="section-heading__eyebrow">Mission control</p>
+                <h3>Your universe is waiting for its first mission.</h3>
+                <p>Create a task to launch your next focus session.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside class="workspace-sidebar" aria-label="Productivity insights and settings">
+          <section class="settings-panel" id="statistics" aria-labelledby="statistics-title">
+            <div class="section-heading__copy">
+              <p class="section-heading__eyebrow">Telemetry</p>
+              <h2 class="settings-panel__title" id="statistics-title">Focus statistics</h2>
+            </div>
+
+            <div class="stats-grid">
+              <article class="stat-card">
+                <p class="stat-card__label">Today's focus</p>
+                <p class="stat-card__value" id="today-focus-value">0h 00m</p>
+              </article>
+              <article class="stat-card">
+                <p class="stat-card__label">Weekly focus</p>
+                <p class="stat-card__value" id="weekly-focus-value">0h 00m</p>
+              </article>
+              <article class="stat-card">
+                <p class="stat-card__label">Monthly focus</p>
+                <p class="stat-card__value" id="monthly-focus-value">0h 00m</p>
+              </article>
+              <article class="stat-card">
+                <p class="stat-card__label">Longest session</p>
+                <p class="stat-card__value" id="longest-session-value">0m</p>
+              </article>
+              <article class="stat-card">
+                <p class="stat-card__label">Average session</p>
+                <p class="stat-card__value" id="average-session-value">0m</p>
+              </article>
+              <article class="stat-card">
+                <p class="stat-card__label">Total sessions</p>
+                <p class="stat-card__value" id="total-sessions-value">0</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="settings-panel" aria-labelledby="quick-settings-title">
+            <div class="section-heading__copy">
+              <p class="section-heading__eyebrow">System</p>
+              <h2 class="settings-panel__title" id="quick-settings-title">Quick settings</h2>
+            </div>
+            <button
+              class="button button--secondary"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="settings-modal"
+            >
+              Open settings
+            </button>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="app-footer">
+        <p>Space Boxes Timer</p>
+      </footer>
+    </div>
+
+    <section
+      class="modal"
+      id="summary-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="summary-modal-title"
+      hidden
+    >
+      <button class="modal__backdrop" type="button" aria-label="Close session summary"></button>
+      <div class="modal__dialog" tabindex="-1">
+        <header class="modal__header">
+          <h2 class="modal__title" id="summary-modal-title">Session summary</h2>
+          <button class="icon-button" type="button" aria-label="Close session summary">Close</button>
+        </header>
+        <div class="modal__body">
+          <section class="summary-hero" aria-label="Completed task duration">
+            <p class="summary-hero__label" id="summary-task-name">Task name</p>
+            <p class="summary-hero__duration" id="summary-duration">00:00:00</p>
+          </section>
+
+          <div class="summary-details">
+            <article class="summary-detail">
+              <p class="summary-detail__label">Started</p>
+              <p class="summary-detail__value" id="summary-start-time">--:--</p>
+            </article>
+            <article class="summary-detail">
+              <p class="summary-detail__label">Finished</p>
+              <p class="summary-detail__value" id="summary-end-time">--:--</p>
+            </article>
+          </div>
+
+          <section class="focus-rating" aria-labelledby="focus-rating-title">
+            <h3 class="focus-rating__label" id="focus-rating-title">Focus rating</h3>
+            <div class="focus-rating__options" role="radiogroup" aria-label="Focus rating">
+              <button class="rating-option" type="button" role="radio" aria-checked="false">1</button>
+              <button class="rating-option" type="button" role="radio" aria-checked="false">2</button>
+              <button class="rating-option" type="button" role="radio" aria-checked="false">3</button>
+              <button class="rating-option" type="button" role="radio" aria-checked="false">4</button>
+              <button class="rating-option" type="button" role="radio" aria-checked="false">5</button>
+            </div>
+          </section>
+
+          <div class="form-field">
+            <label class="form-field__label" for="summary-notes">Notes</label>
+            <textarea
+              class="notes-input"
+              id="summary-notes"
+              name="summaryNotes"
+              placeholder="Capture a thought from this session."
+            ></textarea>
+          </div>
+        </div>
+        <footer class="modal__footer">
+          <button class="button button--primary" type="button">Close summary</button>
+        </footer>
+      </div>
+    </section>
+
+    <section
+      class="modal"
+      id="settings-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+      hidden
+    >
+      <button class="modal__backdrop" type="button" aria-label="Close settings"></button>
+      <div class="modal__dialog" tabindex="-1">
+        <header class="modal__header">
+          <h2 class="modal__title" id="settings-modal-title">Settings</h2>
+          <button class="icon-button" type="button" aria-label="Close settings">Close</button>
+        </header>
+        <div class="modal__body">
+          <div class="settings-row">
+            <div class="settings-row__copy">
+              <label for="theme-select">Theme</label>
+              <p class="settings-row__description">Choose the application color mode.</p>
+            </div>
+            <select class="select-input" id="theme-select" name="theme">
+              <option value="space">Dark space</option>
+            </select>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row__copy">
+              <p id="sound-effects-label">Sound effects</p>
+              <p class="settings-row__description">Play focus-session sounds.</p>
+            </div>
+            <button
+              class="toggle"
+              id="sound-effects-toggle"
+              type="button"
+              aria-pressed="false"
+              aria-labelledby="sound-effects-label"
+            ></button>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row__copy">
+              <p id="notifications-label">Notifications</p>
+              <p class="settings-row__description">Show focus-session notifications.</p>
+            </div>
+            <button
+              class="toggle"
+              id="notifications-toggle"
+              type="button"
+              aria-pressed="false"
+              aria-labelledby="notifications-label"
+            ></button>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row__copy">
+              <p id="reset-data-label">Reset data</p>
+              <p class="settings-row__description">Remove all locally stored tasks and sessions.</p>
+            </div>
+            <button
+              class="button button--secondary button--danger"
+              id="reset-data-button"
+              type="button"
+              aria-labelledby="reset-data-label"
+            >
+              Reset data
+            </button>
+          </div>
+        </div>
+        <footer class="modal__footer">
+          <button class="button button--primary" type="button">Save settings</button>
+        </footer>
+      </div>
+    </section>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

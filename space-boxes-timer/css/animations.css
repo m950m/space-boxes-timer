@@ -1,0 +1,239 @@
+/* Defines visual transitions and animations. */
+
+@keyframes space-glow {
+  0%,
+  100% {
+    box-shadow: var(--shadow-lg), 0 0 18px var(--color-glow-accent);
+  }
+
+  50% {
+    box-shadow: var(--shadow-xl), 0 0 36px var(--color-glow-accent);
+  }
+}
+
+@keyframes space-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+@keyframes space-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-0.5rem);
+  }
+}
+
+@keyframes space-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes space-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes space-particle-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.75rem, 0) scale(0.7);
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(0.75rem, -2.5rem, 0) scale(1.1);
+  }
+}
+
+@keyframes space-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-glow {
+  animation: space-glow var(--duration-slower) var(--ease-emphasized) infinite;
+}
+
+.animate-pulse {
+  animation: space-pulse var(--duration-slower) var(--ease-emphasized) infinite;
+}
+
+.animate-float {
+  animation: space-float 3s var(--ease-emphasized) infinite;
+}
+
+.animate-fade-in {
+  animation: space-fade-in var(--duration-normal) var(--ease-decelerate) both;
+}
+
+.animate-spin {
+  animation: space-spin 1s linear infinite;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--color-surface), var(--color-surface-elevated), var(--color-surface));
+  background-size: 200% 100%;
+  animation: space-shimmer 1.5s linear infinite;
+}
+
+.particle-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  inset-block-end: 0;
+  inline-size: 0.25rem;
+  block-size: 0.25rem;
+  border-radius: var(--radius-full);
+  background-color: var(--color-accent);
+  box-shadow: var(--glow-accent);
+  animation: space-particle-rise 1.8s var(--ease-decelerate) infinite;
+}
+
+.particle:nth-child(2) {
+  inset-inline-start: 20%;
+  animation-delay: 300ms;
+}
+
+.particle:nth-child(3) {
+  inset-inline-start: 50%;
+  animation-delay: 700ms;
+}
+
+.particle:nth-child(4) {
+  inset-inline-start: 78%;
+  animation-delay: 1s;
+}
+
+.task-card.is-active {
+  animation: space-glow var(--duration-slower) var(--ease-emphasized) infinite;
+}
+
+.task-card.is-active .task-timer {
+  color: var(--color-accent);
+  text-shadow: var(--glow-accent);
+}
+
+@keyframes space-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes space-breathe {
+  0%,
+  100% {
+    box-shadow: inset 0 0 2.5rem rgb(33 230 208 / 8%), 0 0 2rem rgb(33 230 208 / 8%);
+    opacity: 0.72;
+  }
+
+  50% {
+    box-shadow: inset 0 0 4rem rgb(33 230 208 / 24%), 0 0 4rem rgb(33 230 208 / 25%);
+    opacity: 1;
+  }
+}
+
+@keyframes space-beam-flow {
+  from {
+    transform: translate(-50%, 100%);
+  }
+
+  to {
+    transform: translate(-50%, -500%);
+  }
+}
+
+@keyframes space-star-drift {
+  from {
+    background-position: 0 0, 7rem 11rem;
+  }
+
+  to {
+    background-position: 4rem -10rem, 2rem 1rem;
+  }
+}
+
+@keyframes space-aurora {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(1.08) translateX(-2%);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12) translateX(2%);
+  }
+}
+
+@keyframes space-energy-wave {
+  from {
+    opacity: 0.7;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+.background-particles {
+  animation: space-star-drift 18s linear infinite alternate;
+}
+
+.background-nebula {
+  animation: space-aurora 14s var(--ease-emphasized) infinite;
+}
+
+.space-box:hover {
+  animation: space-lift var(--duration-normal) var(--ease-emphasized) both;
+}
+
+.energy-core[data-session-state="running"] .energy-core__stage::after {
+  position: absolute;
+  z-index: -1;
+  inline-size: 17rem;
+  block-size: 17rem;
+  border: 1px solid rgb(33 230 208 / 42%);
+  border-radius: 50%;
+  content: "";
+  animation: space-energy-wave 2.4s var(--ease-decelerate) infinite;
+}
+
+@keyframes space-lift {
+  to {
+    transform: translateY(-0.25rem);
+  }
+}
