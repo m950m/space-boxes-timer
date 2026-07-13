@@ -184,6 +184,16 @@
   }
 }
 
+@keyframes space-star-glide {
+  from {
+    background-position: 0 0, 0 0, 0 0, 0 0;
+  }
+
+  to {
+    background-position: 2rem -3rem, -3rem 2rem, 1rem 4rem, -2rem -2rem;
+  }
+}
+
 @keyframes space-aurora {
   0%,
   100% {
@@ -210,11 +220,15 @@
 }
 
 .background-particles {
-  animation: space-star-drift 18s linear infinite alternate;
+  animation: space-star-drift 28s linear infinite alternate;
+}
+
+.background-stars {
+  animation: space-star-glide 42s linear infinite alternate;
 }
 
 .background-nebula {
-  animation: space-aurora 14s var(--ease-emphasized) infinite;
+  animation: space-aurora 18s var(--ease-emphasized) infinite;
 }
 
 .space-box:hover {
@@ -229,11 +243,25 @@
   border: 1px solid rgb(33 230 208 / 42%);
   border-radius: 50%;
   content: "";
-  animation: space-energy-wave 2.4s var(--ease-decelerate) infinite;
+  animation: space-energy-wave 4.8s var(--ease-decelerate) infinite;
 }
 
 @keyframes space-lift {
   to {
     transform: translateY(-0.25rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .background-stars,
+  .background-particles,
+  .background-nebula,
+  .particle,
+  .task-card.is-active,
+  .space-box[data-task-state="running"] .space-box__orbit,
+  .energy-core[data-session-state="running"] .energy-core__ring,
+  .energy-core[data-session-state="running"] .energy-core__beam-signal,
+  .energy-core[data-session-state="running"] .energy-core__stage::after {
+    animation: none;
   }
 }

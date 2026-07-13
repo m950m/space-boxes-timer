@@ -137,7 +137,7 @@
 }
 
 .rating-option:hover,
-.rating-option[aria-pressed="true"] {
+.rating-option[aria-checked="true"] {
   border-color: var(--color-accent);
   background-color: rgb(33 230 208 / 12%);
   box-shadow: var(--glow-accent);

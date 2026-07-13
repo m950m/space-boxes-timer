@@ -179,3 +179,37 @@ Verified the complete MVP lifecycle under fresh, persisted, reloaded, state-tran
 Notes
 
 The final suite passed 48 checks: 8 deterministic module checks and 40 multi-reload headless-browser checks. Fixes ensure backward modal focus trapping, reliable summary focus restoration after task-card rerendering, quiet handling of expected validation errors, and rejection of structurally corrupt persisted task records. Fresh startup and normal user flows produce no console errors; deliberately injected corruption is caught, logged diagnostically, and reported clearly to the user. No uncaught errors, duplicate timer intervals, duplicate event effects, multiple running tasks, or regressions were observed. No HTML, CSS, architecture, file name, or file location was changed.
+
+---
+
+## Browser v1.0 Visual Refinement
+
+Date
+
+2026-07-13
+
+Task
+
+Completed Task 22: Responsive Layout and Visual Hierarchy.
+
+Files Modified
+
+css/layout.css
+
+css/animations.css
+
+css/modal.css
+
+TASKS.md
+
+DEVLOG.md
+
+CHANGELOG.md
+
+Reason
+
+Made the Energy Core and active focus timer the visual center of the browser application while preserving the existing interface, behavior, architecture, and responsive contracts.
+
+Notes
+
+The task composer is now a compact desktop control row, the Energy Core sits substantially higher in the first viewport, the timer has stronger scale and contrast, and statistics use a quieter sidebar treatment. Tablet and mobile cascade ordering was corrected to prevent the sidebar from overlapping main content. Empty-state proportions and spacing were refined, star drift and energy breathing were slowed, and continuous decorative keyframes are disabled for reduced-motion users. Validation covered 1920×1080, 1440×900, 1024×768, and 390×844 screenshots, horizontal overflow checks, the full create/start/pause/resume/finish flow, active-session presentation, and browser console output. No JavaScript, HTML, design tokens, external assets, architecture, IDs, ARIA attributes, forms, templates, or application hooks were changed.
