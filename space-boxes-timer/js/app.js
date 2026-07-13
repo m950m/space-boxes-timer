@@ -15,6 +15,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 const TIMER_UPDATE_INTERVAL = 1_000;
 
+class ExpectedApplicationError extends Error {}
+
 class SpaceBoxesApplication {
   #activeTaskId = null;
   #currentSummaryTaskId = null;
@@ -108,7 +110,7 @@ class SpaceBoxesApplication {
 
   #startTask(taskId) {
     if (this.#activeTaskId && this.#activeTaskId !== taskId) {
-      throw new Error("Finish the active session before starting another task.");
+      throw new ExpectedApplicationError("Finish the active session before starting another task.");
     }
 
     const task = this.#requireTask(taskId);
@@ -137,7 +139,7 @@ class SpaceBoxesApplication {
 
   #resumeTask(taskId) {
     if (this.#activeTaskId && this.#activeTaskId !== taskId) {
-      throw new Error("Finish the active session before resuming another task.");
+      throw new ExpectedApplicationError("Finish the active session before resuming another task.");
     }
 
     const task = this.#requireTask(taskId);
@@ -160,7 +162,7 @@ class SpaceBoxesApplication {
     const task = this.#requireTask(taskId);
 
     if (task.status !== "running" && task.status !== "paused") {
-      throw new Error("Only a running or paused task can be finished.");
+      throw new ExpectedApplicationError("Only a running or paused task can be finished.");
     }
 
     if (this.#activeTaskId === taskId && this.#timer.getState().status !== "idle") {
@@ -307,13 +309,13 @@ class SpaceBoxesApplication {
 
   #assertActiveTask(taskId) {
     if (this.#activeTaskId !== taskId) {
-      throw new Error("The selected task is not the active session.");
+      throw new ExpectedApplicationError("The selected task is not the active session.");
     }
   }
 
   #requireActiveTaskId() {
     if (!this.#activeTaskId) {
-      throw new Error("There is no active task.");
+      throw new ExpectedApplicationError("There is no active task.");
     }
 
     return this.#activeTaskId;
@@ -323,7 +325,7 @@ class SpaceBoxesApplication {
     const task = this.#taskManager.getTask(taskId);
 
     if (!task) {
-      throw new Error("The selected task no longer exists.");
+      throw new ExpectedApplicationError("The selected task no longer exists.");
     }
 
     return task;
@@ -354,7 +356,10 @@ class SpaceBoxesApplication {
     try {
       action();
     } catch (error) {
-      console.error("Application action failed.", error);
+      if (!(error instanceof ExpectedApplicationError)) {
+        console.error("Application action failed.", error);
+      }
+
       this.#ui.showError(error instanceof Error ? error.message : "An unexpected application error occurred.");
     }
   }
@@ -364,7 +369,7 @@ function validateTaskInput(input) {
   const title = input.title.trim();
 
   if (!title) {
-    throw new Error("Enter a task title.");
+    throw new ExpectedApplicationError("Enter a task title.");
   }
 
   let estimatedDuration = null;
@@ -373,7 +378,7 @@ function validateTaskInput(input) {
     const minutes = Number(input.estimatedDuration);
 
     if (!Number.isFinite(minutes) || minutes < 5) {
-      throw new Error("Estimated duration must be at least 5 minutes.");
+      throw new ExpectedApplicationError("Estimated duration must be at least 5 minutes.");
     }
 
     estimatedDuration = minutes * 60_000;

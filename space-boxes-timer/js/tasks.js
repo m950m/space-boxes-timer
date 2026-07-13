@@ -33,6 +33,7 @@ export class TaskManager {
       throw new TypeError("TaskManager dependencies must be functions.");
     }
 
+    validateInitialTasks(tasks);
     this.#tasks = deepClone(tasks);
     this.#clock = clock;
     this.#idFactory = idFactory;
@@ -418,6 +419,107 @@ function normalizeFocusScore(value) {
   }
 
   return score;
+}
+
+function validateInitialTasks(tasks) {
+  const taskIds = new Set();
+
+  tasks.forEach((task, taskIndex) => {
+    const name = `Initial task at index ${taskIndex}`;
+
+    if (!task || typeof task !== "object" || Array.isArray(task)) {
+      throw new TypeError(`${name} must be an object.`);
+    }
+
+    const taskId = assertNonEmptyString(task.id, `${name} id`);
+
+    if (taskIds.has(taskId)) {
+      throw new Error(`Initial task data contains duplicate task id: ${taskId}.`);
+    }
+
+    taskIds.add(taskId);
+    assertNonEmptyString(task.title, `${name} title`);
+    assertNonEmptyString(task.category, `${name} category`);
+    assertOneOf(task.priority, TASK_PRIORITIES, `${name} priority`);
+    assertOneOf(task.status, TASK_STATUSES, `${name} status`);
+    assertFiniteNumber(task.totalElapsedTime, `${name} total elapsed time`, { minimum: 0 });
+    assertValidDate(task.createdAt, `${name} creation time`);
+    assertValidDate(task.updatedAt, `${name} update time`);
+
+    if (task.startedAt !== null) {
+      assertValidDate(task.startedAt, `${name} start time`);
+    }
+
+    if (task.finishedAt !== null) {
+      assertValidDate(task.finishedAt, `${name} finish time`);
+    }
+
+    if (typeof task.notes !== "string") {
+      throw new TypeError(`${name} notes must be a string.`);
+    }
+
+    normalizeFocusScore(task.focusScore);
+
+    if (task.estimatedDuration !== null) {
+      assertFiniteNumber(task.estimatedDuration, `${name} estimated duration`, { minimum: 0 });
+    }
+
+    if (task.status === "archived") {
+      assertOneOf(task.archivedStatus, TASK_STATUSES.filter((status) => status !== "archived"), `${name} archived status`);
+    }
+
+    if (!Array.isArray(task.sessions)) {
+      throw new TypeError(`${name} sessions must be an array.`);
+    }
+
+    const sessionIds = new Set();
+    let activeSessionCount = 0;
+
+    task.sessions.forEach((session, sessionIndex) => {
+      const sessionName = `${name} session at index ${sessionIndex}`;
+
+      if (!session || typeof session !== "object" || Array.isArray(session)) {
+        throw new TypeError(`${sessionName} must be an object.`);
+      }
+
+      const sessionId = assertNonEmptyString(session.id, `${sessionName} id`);
+
+      if (sessionIds.has(sessionId)) {
+        throw new Error(`${name} contains duplicate session id: ${sessionId}.`);
+      }
+
+      sessionIds.add(sessionId);
+      assertValidDate(session.startedAt, `${sessionName} start time`);
+      assertFiniteNumber(session.duration, `${sessionName} duration`, { minimum: 0 });
+
+      if (session.endedAt === null) {
+        activeSessionCount += 1;
+      } else {
+        const startedAt = assertValidDate(session.startedAt, `${sessionName} start time`);
+        const endedAt = assertValidDate(session.endedAt, `${sessionName} end time`);
+
+        if (endedAt < startedAt) {
+          throw new RangeError(`${sessionName} cannot end before it starts.`);
+        }
+      }
+    });
+
+    const expectedActiveSessions = task.status === "running" ? 1 : 0;
+
+    if (activeSessionCount !== expectedActiveSessions) {
+      throw new Error(`${name} has an invalid active session count for status ${task.status}.`);
+    }
+  });
+}
+
+function assertValidDate(value, name) {
+  const timestamp = new Date(value).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    throw new TypeError(`${name} must be a valid date.`);
+  }
+
+  return timestamp;
 }
 
 function toIsoString(timestamp) {

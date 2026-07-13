@@ -257,3 +257,29 @@ Final Review
 Status
 
 DONE
+
+---
+
+# Sprint 5
+
+Task 21
+
+Testing and Stabilization
+
+Status
+
+DONE
+
+Files
+
+js/app.js
+
+js/ui.js
+
+js/tasks.js
+
+TASKS.md
+
+DEVLOG.md
+
+CHANGELOG.md

@@ -177,7 +177,10 @@ export function createUI(documentRoot = document) {
     elements.summaryEndTime.textContent = summary.endTime;
     elements.summaryNotes.value = summary.notes;
     selectRating(elements.ratingOptions, summary.focusRating);
-    openModal(elements.summaryModal);
+    openModal(
+      elements.summaryModal,
+      `[data-task-id="${escapeSelector(summary.taskId)}"] button`,
+    );
   }
 
   function renderSettings(settings) {
@@ -239,8 +242,13 @@ export function createUI(documentRoot = document) {
 
     modal.hidden = true;
     elements.appShell.inert = false;
-    const returnTarget = modalReturnFocus.get(modal);
-    returnTarget?.focus?.();
+    const storedReturnTarget = modalReturnFocus.get(modal);
+    const returnTarget = typeof storedReturnTarget === "string"
+      ? documentRoot.querySelector(storedReturnTarget)
+      : storedReturnTarget;
+    const fallbackTarget = elements.taskForm.querySelector("input, button");
+    const focusTarget = isAvailableFocusTarget(returnTarget) ? returnTarget : fallbackTarget;
+    focusTarget?.focus?.();
   }
 
   return Object.freeze({
@@ -450,13 +458,23 @@ function keepFocusInModal(event, modal) {
 
   const activeElement = modal.ownerDocument.activeElement;
 
-  if (event.shiftKey && (activeElement === first || !modal.contains(activeElement))) {
+  if (!focusable.includes(activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return;
+  }
+
+  if (event.shiftKey && activeElement === first) {
     event.preventDefault();
     last.focus();
   } else if (!event.shiftKey && activeElement === last) {
     event.preventDefault();
     first.focus();
   }
+}
+
+function isAvailableFocusTarget(element) {
+  return Boolean(element?.isConnected && !element.hidden && !element.closest("[hidden]"));
 }
 
 function formatEstimate(milliseconds) {
