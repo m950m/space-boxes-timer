@@ -7,6 +7,7 @@
 A local-first focus timer for doing one demanding task at a time.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-21e6d0.svg)](LICENSE)
+[![Release](https://img.shields.io/badge/release-v1.0.0-a879ff.svg)](CHANGELOG.md#v100)
 [![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-5b8cff.svg?logo=github)](https://m950m.github.io/space-boxes-timer/)
 [![HTML5](https://img.shields.io/badge/HTML5-E34F26.svg?logo=html5&logoColor=white)](index.html)
 [![CSS3](https://img.shields.io/badge/CSS3-1572B6.svg?logo=css3&logoColor=white)](css/)
@@ -149,6 +150,12 @@ Business logic does not manipulate the DOM.
 ```text
 space-boxes-timer/
 ├── index.html
+├── assets/
+│   └── screenshots/
+│       ├── hero-dashboard.png
+│       ├── active-session.png
+│       ├── completed-session.png
+│       └── session-summary.png
 ├── css/
 │   ├── style.css
 │   ├── layout.css
@@ -204,6 +211,8 @@ To inspect the records in a Chromium-based browser:
 In Firefox, open DevTools and use the **Storage** panel.
 
 Export and import are intentionally not implemented in this release. They may be added in a future version.
+
+The planned design preserves the same local-first boundary: export will create a user-controlled, versioned JSON file, while import will validate a selected file locally before updating application-owned records. Neither operation requires a remote service.
 
 ## Installation
 
@@ -261,12 +270,12 @@ Space Boxes Timer remains lightweight because it ships as static HTML, CSS, and 
 
 The roadmap describes candidate release scope, not commitments.
 
-### v1.1
+### v1.1.0
 
 - Export and import of local data.
 - Application-level keyboard shortcuts.
 
-### v1.2
+### v1.2.0
 
 - Enhanced statistics and historical views.
 - Additional visual themes.

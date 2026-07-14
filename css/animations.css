@@ -219,6 +219,42 @@
   }
 }
 
+@keyframes space-core-breathe {
+  0%,
+  100% {
+    opacity: 0.68;
+    transform: scale(0.98);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.035);
+  }
+}
+
+@keyframes space-signal-orbit {
+  from {
+    transform: rotate(-18deg);
+  }
+
+  to {
+    transform: rotate(342deg);
+  }
+}
+
+@keyframes space-planet-breathe {
+  0%,
+  100% {
+    filter: brightness(0.92);
+    transform: scale(0.985);
+  }
+
+  50% {
+    filter: brightness(1.08);
+    transform: scale(1.015);
+  }
+}
+
 .background-particles {
   animation: space-star-drift 28s linear infinite alternate;
 }
@@ -229,6 +265,26 @@
 
 .background-nebula {
   animation: space-aurora 18s var(--ease-emphasized) infinite;
+}
+
+.energy-core__stage::before {
+  animation: space-core-breathe 8s var(--ease-emphasized) infinite;
+}
+
+.energy-core__ring--outer {
+  animation: space-orbit 48s linear infinite;
+}
+
+.energy-core__ring--middle {
+  animation: space-orbit 38s linear infinite reverse;
+}
+
+.empty-state__planet {
+  animation: space-planet-breathe 7s var(--ease-emphasized) infinite;
+}
+
+.empty-state__signal {
+  animation: space-signal-orbit 32s linear infinite;
 }
 
 .space-box:hover {
@@ -256,10 +312,13 @@
   .background-stars,
   .background-particles,
   .background-nebula,
+  .empty-state__planet,
+  .empty-state__signal,
   .particle,
   .task-card.is-active,
   .space-box[data-task-state="running"] .space-box__orbit,
-  .energy-core[data-session-state="running"] .energy-core__ring,
+  .energy-core__ring,
+  .energy-core__stage::before,
   .energy-core[data-session-state="running"] .energy-core__beam-signal,
   .energy-core[data-session-state="running"] .energy-core__stage::after {
     animation: none;

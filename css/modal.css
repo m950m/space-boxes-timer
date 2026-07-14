@@ -18,7 +18,7 @@
 
 .modal__dialog {
   position: relative;
-  inline-size: min(100%, var(--container-md));
+  inline-size: min(100%, 38rem);
   max-block-size: min(44rem, calc(100vh - var(--space-8)));
   overflow: auto;
   border: 1px solid rgb(91 140 255 / 45%);
@@ -34,7 +34,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-5);
 }
 
 .modal__header {
@@ -52,8 +52,8 @@
 
 .modal__body {
   display: grid;
-  gap: var(--space-6);
-  padding: var(--space-6);
+  gap: var(--space-5);
+  padding: var(--space-5);
 }
 
 .summary-hero {
@@ -63,7 +63,7 @@
   border: 1px solid rgb(33 230 208 / 28%);
   border-radius: var(--radius-lg);
   background: var(--gradient-glow);
-  padding: var(--space-8);
+  padding: var(--space-6);
   text-align: center;
 }
 
@@ -75,7 +75,7 @@
 .summary-hero__duration {
   color: var(--color-text-primary);
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-4xl);
+  font-size: clamp(var(--font-size-3xl), 8vw, var(--font-size-4xl));
   font-weight: var(--font-weight-semibold);
   line-height: 1;
   text-shadow: var(--glow-accent);
@@ -184,6 +184,15 @@
   box-shadow: var(--shadow-xl), 0 0 4rem rgb(91 140 255 / 18%);
 }
 
+.modal__dialog::before {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 12%;
+  block-size: 1px;
+  background: linear-gradient(90deg, transparent, rgb(33 230 208 / 78%), transparent);
+  content: "";
+}
+
 .modal__header,
 .modal__footer {
   background-color: rgb(7 10 20 / 34%);
@@ -201,6 +210,11 @@
 .summary-detail {
   border-color: rgb(91 140 255 / 25%);
   background-color: rgb(5 8 22 / 44%);
+}
+
+.settings-row + .settings-row {
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid rgb(91 140 255 / 18%);
 }
 
 .rating-option {

@@ -1,5 +1,63 @@
 # Changelog
 
+## v1.0.0
+
+Date
+
+2026-07-14
+
+Space Boxes Timer's first public release.
+
+Added
+
+- Local-first task creation, deletion, archiving, and restoration.
+- One-active-task focus sessions with start, pause, resume, finish, and reload recovery.
+- Versioned browser persistence for tasks, settings, and derived statistics.
+- Session summaries with elapsed time, focus rating, and notes.
+- Daily, weekly, and monthly focus totals, plus longest, average, and total-session metrics.
+- Responsive desktop, tablet, and mobile layouts with keyboard-accessible modals and reduced-motion support.
+- Public project documentation, architecture guidance, local setup instructions, and release screenshots.
+
+Reliability
+
+- Enforced one running task and one timer-update interval.
+- Validated persisted task and session structures before restoration.
+- Recovered safely from unavailable or invalid browser storage.
+- Verified task creation, timer transitions, reload behavior, summaries, settings, statistics, reset, responsive layouts, and browser-console stability.
+
+Release scope
+
+- Ships as dependency-free HTML, CSS, and JavaScript through GitHub Pages.
+- Stores all application data locally with no accounts, backend, analytics, tracking, or telemetry.
+
+---
+
+## v1.0.0-rc.2
+
+Date
+
+2026-07-14
+
+Polished
+
+- Reduced the sticky header height and tightened the overall vertical rhythm.
+- Strengthened hero typography and supporting-copy readability.
+- Compressed the desktop task composer into a single, efficient control row.
+- Renamed the task submission action to “Launch Mission.”
+- Enlarged the Energy Core timer, orbital rings, progress track, and ambient glow.
+- Refined the empty-state scene, statistics grid spacing, and modal presentation.
+- Improved desktop, tablet, and mobile sizing without changing DOM hooks.
+- Added slow CSS-only core breathing, orbital, planet, and signal motion.
+
+Verified
+
+- Responsive presentation at 1920×1080, 1440×900, 1024×768, and 390×844.
+- Create, start, pause, resume, finish, summary, settings, and statistics behavior.
+- No application runtime errors, no horizontal overflow, and no JavaScript changes.
+- Reduced-motion mode leaves no continuous decorative keyframes active.
+
+---
+
 ## v1.0.0-rc.1
 
 Date

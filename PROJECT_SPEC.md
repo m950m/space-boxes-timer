@@ -2,7 +2,7 @@
 
 ## Vision
 
-Space Boxes Timer is a futuristic desktop productivity application.
+Space Boxes Timer is a browser-based productivity application for immersive focus sessions.
 
 The goal is to make focus sessions feel alive.
 
@@ -25,7 +25,7 @@ The application should encourage Deep Work through beautiful visual feedback rat
 
 ---
 
-# Main Features
+## Main Features
 
 - Task Management
 - One Active Task Only
@@ -34,12 +34,12 @@ The application should encourage Deep Work through beautiful visual feedback rat
 - Session Summary
 - Daily Statistics
 - Weekly Statistics
+- Monthly Statistics
 - Local Storage
-- Electron Ready
 
 ---
 
-# Visual Style
+## Visual Style
 
 Theme:
 
@@ -65,7 +65,7 @@ Smooth Transitions
 
 ---
 
-# Technical Stack
+## Technical Stack
 
 HTML5
 
@@ -75,13 +75,11 @@ Vanilla JavaScript
 
 ES Modules
 
-LocalStorage
-
-Electron Ready
+localStorage
 
 ---
 
-# Architecture Rules
+## Architecture Rules
 
 Business Logic must never manipulate HTML directly.
 
@@ -101,18 +99,18 @@ Utilities stay inside utils.js.
 
 ---
 
-# Future Roadmap
+## Future Roadmap
 
-Electron
+### v1.1.0
 
-Cloud Sync
+- Export and Import
+- Application Keyboard Shortcuts
 
-Achievements
+### v1.2.0
 
-Focus Analytics
+- Enhanced Statistics and Historical Views
+- Additional Themes
 
-Export Data
+### Future Exploration
 
-Themes
-
-Keyboard Shortcuts
+- Advanced Focus Analytics

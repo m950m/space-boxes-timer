@@ -309,3 +309,31 @@ TASKS.md
 DEVLOG.md
 
 CHANGELOG.md
+
+---
+
+# Sprint 6
+
+Task 23
+
+Browser UI Polish
+
+Status
+
+DONE
+
+Files
+
+index.html
+
+css/layout.css
+
+css/animations.css
+
+css/modal.css
+
+TASKS.md
+
+DEVLOG.md
+
+CHANGELOG.md
