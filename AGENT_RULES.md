@@ -1,5 +1,7 @@
 # Agent Rules
 
+> **Legacy v1 guidance:** This file primarily describes v1 implementation rules. For v2, [AGENTS.md](AGENTS.md) and the approved v2 product, architecture and data sources linked there, together with the [canonical v2 workflow](_docs/agents/v2-agent-workflow.md), take precedence. These rules apply only where compatible. The blanket STOP-on-any-ambiguity instruction below does not replace the workflow's material-policy versus implementation-detail boundary.
+
 Before writing code always:
 
 Read PROJECT_SPEC.md

@@ -1,5 +1,7 @@
 # Contributing to Space Boxes Timer
 
+> **V2 boundary:** Start with [AGENTS.md](AGENTS.md) and the [canonical v2 workflow](_docs/agents/v2-agent-workflow.md); approved v2 product, architecture and data sources take precedence. The dependency-free/no-build setup, existing Vanilla JavaScript module ownership, browser-only validation and implemented-behavior-only documentation rules below describe the v1 baseline. They do not override approved v2 architecture, design documentation, future tooling or implementation decisions. Compatible v1 contribution guidance remains useful; `TASKS.md` is historical v1 task history, not the v2 work queue.
+
 Thank you for considering a contribution. Space Boxes Timer is intentionally small, dependency-free, and local-first. Contributions should preserve that scope and the existing separation between application state and presentation.
 
 ## Before you begin
