@@ -107,7 +107,8 @@ They do not validate browser UI, persistence or focus authority.
 - `createTaskPlanningRecord(record)`: validate caller-supplied planning data and
   return a new record with copied plan items.
 - `updateTaskPlanningRecord(record, changes)`: return a validated copy with
-  changes limited to `title`, `plannedStart` and `sessionPlan`.
+  changes limited to `title`, `plannedStart`, `sessionPlan` and optional
+  `plannedBreaks` (extended by V2-009C below).
 - `getTaskPlanningTotals(record)`: compute `{ sessionCount, plannedFocusMinutes }`
   from the current items. These fields cannot be supplied as editable task data.
 
@@ -133,8 +134,8 @@ The classification operation remains separate; callers use 009A to validate and
 change classification across their task collection.
 
 This is an in-memory domain contract, not a persistence schema. Plan Day
-rescheduling, dedicated item ordering/break operations and broader history-safe
-change workflows remain subsequent issue slices. The module is not wired into
+rescheduling and broader task-change workflows remain subsequent issue slices.
+The module is not wired into
 the UI and has no storage, backend, timer or session-execution dependency.
 
 Run both domain suites with the existing GJS execution option:
@@ -148,6 +149,66 @@ Planning tests cover required fields, item identity, computed totals, duration
 and count updates, invalid updates, input snapshots, stable identity/history,
 opaque planned starts and compatibility with classification. No additional
 dependency, test framework or build step is required.
+
+## Ordered focus items and planned breaks (V2-009C, Issue #14)
+
+The same `task-planning.js` module extends the existing focus-item array with
+explicit operations. Each returns a validated task snapshot without mutating
+inputs:
+
+- `addPlannedFocusItem(record, item, index)` inserts a caller-identified item at
+  an explicit zero-based position, including either boundary.
+- `editPlannedFocusItem(record, id, activeMinutes)` changes duration under the
+  same identity.
+- `reorderPlannedFocusItems(record, ids)` accepts a complete permutation of
+  current focus identities.
+- `removePlannedFocusItem(record, id)` removes an item from current planning.
+- `addPlannedBreak(record, plannedBreak)`, `editPlannedBreak(record, id, changes)`
+  and `removePlannedBreak(record, id)` manage separate rest items. Break edits
+  accept only duration and adjacency changes.
+- `getPlannedFocusItem(record, id)` and `getPlannedBreak(record, id)` return item
+  copies by identity, including retired items for historical associations.
+
+Optional `plannedBreaks` contains records with non-empty opaque `id`, finite
+numeric `breakMinutes`, and `afterFocusItemId`/`beforeFocusItemId` references to
+adjacent current focus items in that order. Break identities are unique within
+their own collection. Sequence follows the focus-item order, with breaks placed
+between their referenced pair; multiple breaks in the same gap follow their
+array order. There are no break defaults, duration limits, or per-gap count caps.
+Break durations are excluded from both session count and planned-focus totals.
+
+Reordering an intact pair preserves its breaks' adjacency. An insertion, removal
+or reorder that displaces a break rejects without changes. Callers explicitly
+move/remove the break first, or use `updateTaskPlanningRecord` to change focus
+order and break placement together atomically. No operation silently moves a
+break to a different pair or drops it.
+
+Removed items accumulate in `retiredFocusItems` and `retiredPlannedBreaks`,
+including when current collections are replaced through the generic update.
+These are retained in-memory identity records, not database tables or an archive
+lifecycle. Retention applies even when recorded history lives outside the task.
+Retired identities cannot be reused in the current plan, and retained collections
+cannot be edited through planning updates. Retired breaks keep their former
+adjacency references even if the focus items are also retired. Actual sessions,
+recorded breaks and their frozen starting values pass through unchanged; current
+item lookup never replaces historical snapshots.
+
+The existing required non-empty focus plan remains enforced. There is no break
+completion/execution operation, automatic next-session start, timer, UI, storage
+or backend integration. These operations only change planning data and cannot
+create actual focus, pause, interruption or task-completion facts.
+
+Run the additional focused suite with the existing GJS runner:
+
+```bash
+gjs -m v2/frontend/tests/session-plan.test.js
+```
+
+It covers focus order/duration changes, cumulative identity retention, unchanged
+external and task-owned history, explicit break placement, break exclusion,
+invalid operations, input isolation and composition with classification. Run the
+two existing domain suites above for regression coverage. No dependencies were
+added.
 
 ## Limits
 
