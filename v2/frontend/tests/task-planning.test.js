@@ -199,7 +199,11 @@ test("planning edits preserve task identity, scope, Plan Day and historical evid
     sessionPlan: [{ id: "focus-b", activeMinutes: 30 }],
   });
   const updated = updateTaskPlanningRecord(original, changes);
-  equal(updated, { ...original, ...changes }, "An unrelated field changed");
+  equal(updated, {
+    ...original,
+    ...changes,
+    retiredFocusItems: [original.sessionPlan[0], original.sessionPlan[2]],
+  }, "An unrelated field changed or removed identities were not retained");
   assert(updated.history === original.history, "Historical evidence was rewritten");
   equal(updated.history, original.history, "Removed planned item lost historical association");
   equal(getTaskPlanningTotals(updated), { sessionCount: 1, plannedFocusMinutes: 30 },
