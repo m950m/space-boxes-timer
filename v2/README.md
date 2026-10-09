@@ -1,8 +1,9 @@
 # V2 minimal runnable foundation
 
 This foundation provides an isolated Vanilla JavaScript entry point and a local
-Django project. It has no product features, accounts, database, migrations, or
-browser persistence. Existing V1 files and storage keys are unchanged.
+Django project, plus the classification-only domain slice described below. The
+page still displays only the startup status. There are no accounts, database,
+migrations, or browser persistence. Existing V1 files and storage keys are unchanged.
 
 ## Setup
 
@@ -66,9 +67,42 @@ python3 -m http.server 8765
 Open <http://localhost:8765/>. Inspect all new files and confirm the task changes
 are confined to `v2/`.
 
+## Primary/Extra classification domain slice (V2-009A, Issue #12)
+
+`frontend/js/domain/task-classification.js` exports
+`setTaskClassification(tasks, ownershipScopeId, taskId, classification)`.
+It returns a new task array with the selected task's classification changed to
+`"primary"` or `"extra"`. It does not mutate the input. At most three Primary
+assignments are permitted per ownership scope/Plan Day; Extra tasks have no count
+cap. Demotion releases capacity. Invalid input, an absent/ambiguous target or a
+fourth Primary assignment throws without changing input state.
+
+The operation accepts existing records with non-empty opaque string `id`,
+`ownershipScopeId` and `planDayId` references, plus `classification`. Task identity
+must be unique within its ownership scope. `planDayId` refers to the caller's
+ownership-scoped Plan Day; this operation does not interpret dates or timezones.
+These names define a small module contract, not a full Task creation API,
+identifier-generation scheme or persistence schema. Other fields, including
+historical activity and lifecycle state, pass through unchanged; nested data is
+shared, not rewritten. There is no implicit task/session start or completion.
+The module has no DOM, backend or storage dependency and is not wired into the UI.
+
+Run the focused automated ES-module tests from the repository root:
+
+```bash
+gjs -m v2/frontend/tests/task-classification.test.js
+```
+
+GJS 1.88.0 was already available in the implementation environment and executes
+the pure JavaScript tests without Node/npm, an added package or a build step.
+GJS is only a test execution option; it is not a product runtime dependency.
+The tests cover quota boundaries, demotion, day/scope isolation, invalid requests,
+input immutability, history preservation and unchanged task/session lifecycle.
+They do not validate browser UI, persistence or focus authority.
+
 ## Limits
 
 Settings, the public development-only secret, and Django static serving are for
 local development only. The frontend does not import V1 modules or access browser
-storage. Authentication, PostgreSQL, IndexedDB, domain behavior, synchronization,
+storage. Authentication, PostgreSQL, IndexedDB, other domain behavior, synchronization,
 visual design, CI, Docker, and production configuration remain future work.
