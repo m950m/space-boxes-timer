@@ -1,10 +1,6 @@
-const CLASSIFICATIONS = new Set(["primary", "extra"]);
+import { requireReference } from "./logical-reference.js";
 
-function requireReference(value, name) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError(`${name} must be a non-empty logical reference.`);
-  }
-}
+const CLASSIFICATIONS = new Set(["primary", "extra"]);
 
 /**
  * Change classification on an existing task without mutating input records.

@@ -1,7 +1,7 @@
 # V2 minimal runnable foundation
 
 This foundation provides an isolated Vanilla JavaScript entry point and a local
-Django project, plus the classification-only domain slice described below. The
+Django project, plus the planning domain slices described below. The
 page still displays only the startup status. There are no accounts, database,
 migrations, or browser persistence. Existing V1 files and storage keys are unchanged.
 
@@ -99,6 +99,55 @@ GJS is only a test execution option; it is not a product runtime dependency.
 The tests cover quota boundaries, demotion, day/scope isolation, invalid requests,
 input immutability, history preservation and unchanged task/session lifecycle.
 They do not validate browser UI, persistence or focus authority.
+
+## Required planning records and totals (V2-009B, Issue #13)
+
+`frontend/js/domain/task-planning.js` exports:
+
+- `createTaskPlanningRecord(record)`: validate caller-supplied planning data and
+  return a new record with copied plan items.
+- `updateTaskPlanningRecord(record, changes)`: return a validated copy with
+  changes limited to `title`, `plannedStart` and `sessionPlan`.
+- `getTaskPlanningTotals(record)`: compute `{ sessionCount, plannedFocusMinutes }`
+  from the current items. These fields cannot be supplied as editable task data.
+
+Records reuse the non-empty opaque `id`, `ownershipScopeId` and `planDayId`
+references from 009A. They require a non-empty string `title`, a supplied
+`plannedStart`, and a `sessionPlan` array containing focus items. Each item has a
+non-empty `id`, unique within the task, and finite numeric `activeMinutes`.
+Array order is the caller's intended order. Missing/empty plans are incomplete;
+no duration defaults, integer requirement, or product duration/count limits are
+selected. Numeric overflow rejects rather than returning an infinite total.
+Three items of 25, 25 and 40 minutes yield count 3 and total 90 minutes. Editing
+durations or replacing the item collection recalculates the projection; there is
+no separately stored count, total or required V1 estimate.
+
+`plannedStart` is opaque scheduling intent, checked only for presence (not null,
+undefined or a blank string). The module chooses no timestamp encoding, parses
+no dates and uses no clock. The caller supplies the ownership-scoped Plan Day
+reference; its date/timezone representation remains outside this API. Identity,
+scope, current Plan Day, classification, lifecycle fields and historical activity
+pass through unchanged. Planning cannot initialize actual start or complete a
+task. Historical data is shared without rewriting snapshots or item associations.
+The classification operation remains separate; callers use 009A to validate and
+change classification across their task collection.
+
+This is an in-memory domain contract, not a persistence schema. Plan Day
+rescheduling, dedicated item ordering/break operations and broader history-safe
+change workflows remain subsequent issue slices. The module is not wired into
+the UI and has no storage, backend, timer or session-execution dependency.
+
+Run both domain suites with the existing GJS execution option:
+
+```bash
+gjs -m v2/frontend/tests/task-planning.test.js
+gjs -m v2/frontend/tests/task-classification.test.js
+```
+
+Planning tests cover required fields, item identity, computed totals, duration
+and count updates, invalid updates, input snapshots, stable identity/history,
+opaque planned starts and compatibility with classification. No additional
+dependency, test framework or build step is required.
 
 ## Limits
 
