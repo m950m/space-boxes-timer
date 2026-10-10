@@ -133,8 +133,8 @@ task. Historical data is shared without rewriting snapshots or item associations
 The classification operation remains separate; callers use 009A to validate and
 change classification across their task collection.
 
-This is an in-memory domain contract, not a persistence schema. Plan Day
-rescheduling and broader task-change workflows remain subsequent issue slices.
+This is an in-memory domain contract, not a persistence schema. Explicit Plan Day
+rescheduling and task decisions are described in V2-009D below.
 The module is not wired into
 the UI and has no storage, backend, timer or session-execution dependency.
 
@@ -209,6 +209,52 @@ external and task-owned history, explicit break placement, break exclusion,
 invalid operations, input isolation and composition with classification. Run the
 two existing domain suites above for regression coverage. No dependencies were
 added.
+
+## History-safe planning changes (V2-009D, Issue #15)
+
+`task-planning.js` adds three explicit operations:
+
+- `rescheduleTaskPlanningRecord(tasks, ownershipScopeId, taskId, planDayId,
+  plannedStart)` returns a task collection with only the scoped target's current
+  day/start changed. It reuses classification validation to enforce the destination
+  limit of three Primary assignments. A full destination rejects a fourth Primary
+  without automatic demotion. Extras have no count cap; other tasks/scopes pass
+  through unchanged. Parent/child plans do not move automatically.
+- `cancelTaskPlanningRecord(record, cancelledAt)` records cancellation of planning
+  availability through a separate `cancelledAt` decision fact. The task and all its
+  plan identities/history remain available; there is no deletion or archive lifecycle.
+- `completeTaskPlanningRecord(record, completedAt)` records the explicit user
+  completion fact/time independently of actual sessions. It does not end sessions,
+  require completed sessions, or complete related tasks.
+
+Decision times are supplied by the caller and checked for presence, using the
+same opaque-intent boundary as planned start. Repeated explicit decisions retain
+the first recorded time. These facts are separate from classification and any
+caller-owned lifecycle fields; no full task state machine, reopening policy or
+automatic Primary reassignment is introduced. Later edits/rescheduling preserve
+both facts. Generic planning updates cannot set decision times or change Plan Day.
+
+Ordinary edits use the existing planning update API. Task identity, session-start
+title/classification, original Plan Day/timezone, planned start, configured duration,
+planned-item links and recorded activity remain unchanged. History may be owned
+by the task or held separately; these operations neither reinterpret nor rewrite it.
+Current-plan projections and metadata edits never roll unfinished tasks to another
+day or infer completion from session outcomes. Only explicit rescheduling changes
+current Plan Day; only explicit task completion records its decision.
+
+The operations return validated planning copies without mutating inputs. They
+use no clock, UI, persistence, backend, session engine or new dependency.
+
+Run the focused suite, plus the three domain regression suites above:
+
+```bash
+gjs -m v2/frontend/tests/task-history.test.js
+```
+
+The tests cover unchanged historical snapshots/activity across edits, rescheduling,
+cancellation and completion; retained links; no automatic rollover/completion;
+explicit decision times; destination quotas; scope isolation; input immutability;
+invalid actions and composition with the existing planning/classification APIs.
 
 ## Limits
 

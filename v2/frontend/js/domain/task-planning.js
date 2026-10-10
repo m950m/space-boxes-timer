@@ -1,4 +1,5 @@
 import { requireReference } from "./logical-reference.js";
+import { setTaskClassification } from "./task-classification.js";
 
 const EDITABLE_FIELDS = new Set(["title", "plannedStart", "sessionPlan", "plannedBreaks"]);
 const COMPUTED_FIELDS = ["sessionCount", "plannedFocusMinutes"];
@@ -129,6 +130,56 @@ export function updateTaskPlanningRecord(record, changes) {
   retainRemovedItems(record, next, "sessionPlan", "retiredFocusItems");
   retainRemovedItems(record, next, "plannedBreaks", "retiredPlannedBreaks");
   return createTaskPlanningRecord(next);
+}
+
+/**
+ * Explicitly move current planning under the same task identity.
+ * Plan Day/start remain opaque caller intent; history keeps its starting day.
+ * Use the collection boundary to enforce the destination Primary limit.
+ */
+export function rescheduleTaskPlanningRecord(
+  tasks, ownershipScopeId, taskId, planDayId, plannedStart,
+) {
+  if (!Array.isArray(tasks)) {
+    throw new TypeError("tasks must be an array of existing task records.");
+  }
+  for (const [name, value] of Object.entries({ ownershipScopeId, taskId, planDayId })) {
+    requireReference(value, name);
+  }
+  const target = tasks.find((task) => (
+    task?.ownershipScopeId === ownershipScopeId && task?.id === taskId
+  ));
+  if (!target) {
+    throw new RangeError("Task was not found in the requested ownership scope.");
+  }
+  validatePlanning(target);
+  const moved = createTaskPlanningRecord({ ...target, planDayId, plannedStart });
+  const result = tasks.map((task) => task === target ? moved : task);
+  return setTaskClassification(result, ownershipScopeId, taskId, target.classification);
+}
+
+function recordTaskDecision(record, field, decidedAt) {
+  validatePlanning(record);
+  // Caller-supplied decision time, not a clock, timestamp format or session fact.
+  if (decidedAt === undefined || decidedAt === null
+      || (typeof decidedAt === "string" && decidedAt.trim() === "")) {
+    throw new TypeError(`${field} requires an explicit decision time.`);
+  }
+  // Repeated explicit actions preserve the first decision rather than rewriting it.
+  if (record[field] !== undefined && record[field] !== null) {
+    return createTaskPlanningRecord(record);
+  }
+  return createTaskPlanningRecord({ ...record, [field]: decidedAt });
+}
+
+/** Cancel planning availability; retain the task, plan identities and all history. */
+export function cancelTaskPlanningRecord(record, cancelledAt) {
+  return recordTaskDecision(record, "cancelledAt", cancelledAt);
+}
+
+/** Record explicit task completion independently of every session outcome. */
+export function completeTaskPlanningRecord(record, completedAt) {
+  return recordTaskDecision(record, "completedAt", completedAt);
 }
 
 /** Derive a fresh projection; no separately stored/editable count or total. */
