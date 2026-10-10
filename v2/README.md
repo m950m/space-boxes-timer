@@ -108,7 +108,7 @@ They do not validate browser UI, persistence or focus authority.
   return a new record with copied plan items.
 - `updateTaskPlanningRecord(record, changes)`: return a validated copy with
   changes limited to `title`, `plannedStart`, `sessionPlan` and optional
-  `plannedBreaks` (extended by V2-009C below).
+  `plannedBreaks`, `note` and `resources` (extended by V2-009C/F below).
 - `getTaskPlanningTotals(record)`: compute `{ sessionCount, plannedFocusMinutes }`
   from the current items. These fields cannot be supplied as editable task data.
 
@@ -311,6 +311,40 @@ scope isolation, deep hierarchies, stable identities, split history preservation
 explicit new plans, destination capacity and composition with existing operations.
 They validate the domain contract; UI, persistence and session lifecycle are outside
 this slice.
+
+## Optional notes and URL resources (V2-009F, Issue #17)
+
+The existing planning factory and update API accept optional `note` and
+`resources`. A note is a string; omission, `null`, `undefined` or an empty string
+is valid. No numeric note-length limit is selected by the approved specifications.
+Resources may be omitted or supplied as an array of `{ url, label? }` records.
+The URL must be a non-blank string; labels may be omitted, `null`, `undefined`
+or any string. Text is preserved exactly. URL parsing, scheme validation,
+normalization and direct opening remain later UI work under OD-021; this
+in-memory contract does not certify that stored text is safe to navigate to.
+Resource fields are limited to URL and label, with no upload data, generated
+resource identities, uniqueness rule or resource-count cap.
+
+Use `updateTaskPlanningRecord(record, { note })` to edit or clear the note.
+Use `updateTaskPlanningRecord(record, { resources })` to add, edit or remove
+resources by supplying the next collection; `[]` clears it. Resource arrays and
+their records are copied on creation and every planning update, isolating caller
+mutations. Invalid annotations reject without modifying inputs. These edits
+preserve task identity, scope, planning, decisions, session-start snapshots and
+recorded activity, including history held outside the task. They create no
+session or completion facts and do not affect focus totals. Notes and resources
+are current task annotations, not required history snapshots.
+
+Run the focused suite and the five domain regression suites above:
+
+```bash
+gjs -m v2/frontend/tests/task-resources.test.js
+```
+
+Tests cover optionality, add/edit/remove, invalid shapes, input isolation, no
+count cap, exact text preservation, unchanged history and composition with
+classification, rescheduling and split work. This slice adds no UI, browser
+navigation, domain exception/blocking behavior, storage, backend or dependency.
 
 ## Limits
 
