@@ -1,12 +1,39 @@
 import { requireReference } from "./logical-reference.js";
 import { setTaskClassification } from "./task-classification.js";
 
-const EDITABLE_FIELDS = new Set(["title", "plannedStart", "sessionPlan", "plannedBreaks"]);
+const EDITABLE_FIELDS = new Set([
+  "title", "plannedStart", "sessionPlan", "plannedBreaks", "note", "resources",
+]);
 const COMPUTED_FIELDS = ["sessionCount", "plannedFocusMinutes"];
 
 function requireRecord(value, name) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${name} must be a record.`);
+  }
+}
+
+function validateTaskAnnotations(record) {
+  if (record.note != null && typeof record.note !== "string") {
+    throw new TypeError("note must be an optional string.");
+  }
+  if (!Object.hasOwn(record, "resources")) return;
+  if (!Array.isArray(record.resources)) {
+    throw new TypeError("resources must be an array.");
+  }
+  for (const resource of record.resources) {
+    requireRecord(resource, "task resource");
+    for (const key of Reflect.ownKeys(resource)) {
+      if (key !== "url" && key !== "label") {
+        throw new TypeError(`${String(key)} is not a task resource field.`);
+      }
+    }
+    // Preserve URL text; parsing/opening policy belongs to the later UI slice.
+    if (typeof resource.url !== "string" || resource.url.trim() === "") {
+      throw new TypeError("resource url must be a non-empty string.");
+    }
+    if (resource.label != null && typeof resource.label !== "string") {
+      throw new TypeError("resource label must be an optional string.");
+    }
   }
 }
 
@@ -55,6 +82,7 @@ function validatePlanning(record) {
   if (typeof record.title !== "string" || record.title.trim() === "") {
     throw new TypeError("title must be a non-empty string.");
   }
+  validateTaskAnnotations(record);
   // Scheduling intent is opaque; no timestamp format or clock interpretation.
   if (record.plannedStart === undefined || record.plannedStart === null
       || (typeof record.plannedStart === "string" && record.plannedStart.trim() === "")) {
@@ -103,7 +131,7 @@ export function createTaskPlanningRecord(record) {
     ...record,
     sessionPlan: record.sessionPlan.map((item) => ({ ...item })),
   };
-  for (const field of ["plannedBreaks", "retiredFocusItems", "retiredPlannedBreaks"]) {
+  for (const field of ["plannedBreaks", "retiredFocusItems", "retiredPlannedBreaks", "resources"]) {
     if (Object.hasOwn(record, field)) {
       result[field] = record[field].map((item) => ({ ...item }));
     }
