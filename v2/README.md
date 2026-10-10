@@ -2,8 +2,9 @@
 
 This foundation provides an isolated Vanilla JavaScript entry point and a local
 Django project, plus the planning domain slices described below. The
-page still displays only the startup status. There are no accounts, database,
-migrations, or browser persistence. Existing V1 files and storage keys are unchanged.
+page still displays only a status message. Browser-local IndexedDB persistence
+is implemented for planning records; there are no accounts, backend database or
+migrations. Existing V1 files and storage keys are unchanged.
 
 ## Setup
 
@@ -38,7 +39,9 @@ python3 -m http.server 8766 --bind 127.0.0.1 --directory v2/frontend
 
 Open <http://127.0.0.1:8766/>. This mode needs neither Django nor the virtual
 environment. In both modes, the initial “Starting V2 frontend…” message changes
-to “V2 frontend ready.” when the ES module loads. Stop either server with Ctrl+C.
+to “V2 frontend ready. Local plans loaded.” after IndexedDB initialization and
+validation. Storage failures display “Error” with the reason. Stop either server
+with Ctrl+C.
 
 ## Verify
 
@@ -66,6 +69,104 @@ python3 -m http.server 8765
 
 Open <http://localhost:8765/>. Inspect all new files and confirm the task changes
 are confined to `v2/`.
+
+## Local planning persistence (V2-010, Issue #24)
+
+`frontend/js/persistence/planning-store.js` uses native IndexedDB and structured
+clone, with no new dependencies. `openPlanningStore({ onStatus })` resolves to
+`{ localScopeId, load, commit, close }`. The page's `app.js` exports a
+`planningStore` promise for this boundary; it adds no planner controls. The
+existing `role="status"` area displays Loading, Saving, Saved or Error according
+to actual operations. Initialization/load readiness is distinct from a save.
+Status follows the latest operation started on that store; older completions
+cannot replace its pending or failure message. Saved requires that operation's
+transaction to complete.
+
+Version 1 of the isolated `space-boxes-v2` database has these object stores:
+
+| Store | Key | Value / index |
+| --- | --- | --- |
+| `metadata` | `key` | `{ key: "localScopeId", value: <random local identity> }` |
+| `scopes` | `ownershipScopeId` | `{ ownershipScopeId, revision, taskIds }`; IDs retain task order |
+| `tasks` | `[ownershipScopeId, id]` | Full existing Task aggregate; non-unique `scope` index on `ownershipScopeId` |
+
+Local identity is generated only in the initial schema transaction and persists
+across reloads. Physical keys match the domain's opaque string scope/task
+references; planned focus and break identities remain inside their Task.
+Task records retain supplied Plan Day/calendar/timezone context, optional
+historical payloads, activity associations and retired items through native
+structured clone. The adapter does not generate or reinterpret these values.
+Session count and planned focus totals remain domain projections.
+
+`load(scopeId = localScopeId)` returns `{ ownershipScopeId, revision, tasks }`
+from one consistent readonly transaction. A new empty scope has revision 0.
+`commit(scopeId, expectedRevision, commands)` accepts a non-empty array of these
+commands and returns the same shape only after transaction completion:
+
+| `type` | Other command fields |
+| --- | --- |
+| `create` | `task` (existing planning record, including any supplied history/context) |
+| `edit` | `taskId`, `changes` (existing domain's editable planning fields) |
+| `classify` | `taskId`, `classification` |
+| `reschedule` | `taskId`, `planDayId`, `plannedStart` |
+| `parent` | `taskId`, `parentTaskId` (null detaches) |
+| `split` | `taskId`, `newWork` (existing domain's allowed new-work fields) |
+| `complete`, `cancel` | `taskId`, `decidedAt` (caller-supplied decision time) |
+
+For example, after loading a scope, submit
+`store.commit(store.localScopeId, loaded.revision, [{ type: "edit", taskId,
+changes: { title: "Revised title" } }])`. Reads, the revision comparison, existing
+domain commands, collection/quota/hierarchy validation, and all writes occur
+within one readwrite transaction. Each command must leave a valid collection;
+combined focus/break changes belong in one `edit`. The complete scope is written
+atomically. Revision increments once per committed batch, so even unrelated
+edits in the same scope can cause an explicit stale-revision rejection. The
+caller must reload and decide whether to submit a new command; there is no
+automatic retry, merging or silent last-write-wins.
+
+Ordinary commands cannot delete tasks or rewrite historical fields. They reuse
+the existing history-safe domain operations. Split creates separately planned
+work without copying activity. Cancellation retains records. This adapter does
+not add sessions, reservations, focus control, connected/account authority,
+clock policy, retention, deletion, V1 import, export or synchronization.
+
+Initialization validates the physical schema, local identity, ordering metadata
+and all stored task collections. Invalid records, incomplete schema, denied
+access and unsupported newer versions are errors, never empty-plan fallbacks.
+Only a new database gets schema initialization. Blocked/failed initialization
+rejects; version changes close the connection and require reload. No reset,
+repair, overwrite or destructive migration is attempted. Saving resolves on
+`IDBTransaction.complete`, not request success. Aborts, request errors, quota
+and serialization failures reject and preserve previous committed records.
+
+Storage authority is limited to the browser origin/profile. Different server
+ports have different origins. Browser storage may be denied, quota limited,
+cleared or evicted and is not a backup. This slice requires native IndexedDB,
+structured clone and `crypto.randomUUID` (localhost or another secure context).
+It has no selected browser support matrix or silent persistence fallback.
+
+Run the real-browser tests using installed Chrome/Chromium and Python stdlib:
+
+```bash
+python3 v2/frontend/tests/run-browser-tests.py
+```
+
+The runner creates a disposable profile and ephemeral localhost origin, reloads
+the page and restarts the browser process with that profile. Only test fixtures
+in that origin are reset. It exercises aggregate/ordering round trips, repeated
+edits and history/retired links, atomic multi-record rejection, scoped identity,
+concurrent stale writers, native request error/abort rollback, failure statuses,
+schema/initialization failures, version changes and unchanged V1 sentinels.
+The suite checks the actual page's accessible pending/saved/error status.
+Overlapping-save regressions cover older completions after a newer failure and
+while a newer transaction remains pending.
+
+Quota, storage denial, blocked-open request selection and failed-upgrade
+conditions use deterministic API fault injection around real IndexedDB
+transactions. Native quota exhaustion, browser permission configuration,
+eviction, crash/power-loss recovery and other browser engines are **not** covered
+by this suite. These tests do not claim backup or focus-authority guarantees.
+Retain the six GJS domain suites below and Django's four HTTP smoke tests.
 
 ## Primary/Extra classification domain slice (V2-009A, Issue #12)
 
@@ -349,6 +450,7 @@ navigation, domain exception/blocking behavior, storage, backend or dependency.
 ## Limits
 
 Settings, the public development-only secret, and Django static serving are for
-local development only. The frontend does not import V1 modules or access browser
-storage. Authentication, PostgreSQL, IndexedDB, other domain behavior, synchronization,
-visual design, CI, Docker, and production configuration remain future work.
+local development only. The frontend uses IndexedDB for the planning records
+described above and does not import V1 modules or access V1 storage.
+Authentication, PostgreSQL, other domain behavior, synchronization, visual
+design, CI, Docker, and production configuration remain future work.
