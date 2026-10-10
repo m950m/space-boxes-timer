@@ -256,6 +256,62 @@ cancellation and completion; retained links; no automatic rollover/completion;
 explicit decision times; destination quotas; scope isolation; input immutability;
 invalid actions and composition with the existing planning/classification APIs.
 
+## Subtask hierarchy and split work (V2-009E, Issue #16)
+
+`frontend/js/domain/task-hierarchy.js` exports:
+
+- `validateTaskHierarchy(tasks)` checks a complete in-memory task collection for
+  unambiguous scope-local identities, existing same-scope parents and cycles.
+- `setTaskParent(tasks, ownershipScopeId, taskId, parentTaskId)` returns a new
+  collection with only the selected task's current parent replaced. Pass `null`
+  to detach. Identity, planning, classification, completion facts and history
+  remain unchanged; historical parent snapshots are not rewritten.
+- `splitTaskPlanningRecord(tasks, ownershipScopeId, taskId, newWork)` adds one or
+  more caller-identified, separately planned tasks within the source scope. Each
+  supplies its own required planning fields and classification. New identities
+  must be unused within that scope. Destination Primary limits reuse 009A;
+  required plans and plan snapshots reuse 009B/C.
+
+The single optional `parentTaskId` is a non-empty logical reference or absent/null.
+The planning-record factory checks its shape and rejects self-parenting; resolving
+parents and detecting longer cycles requires the complete collection boundary.
+Validate assembled collections before use, and change existing parent relationships
+through `setTaskParent`, rather than generic planning edits. Parents may be on a
+different current Plan Day within the same scope. Traversal is iterative with no
+selected depth or child-count cap. Hierarchy does not change Primary/Extra rules,
+complete relatives, move their plans or roll their durations into parent totals.
+Tasks and subtasks share the same planning contract for later focus-session code;
+these operations create no actual session or focus authority.
+
+Splitting leaves every existing task untouched, including the source's current
+plan, retained item identities, decisions, historical sessions and evidence.
+New work accepts only planning fields (`id`, `ownershipScopeId`, `planDayId`,
+`classification`, `title`, `plannedStart`, `sessionPlan`, optional `plannedBreaks`,
+`parentTaskId`, `note` and `resources`). History, retired items and lifecycle fields
+are rejected, preventing source-record cloning from carrying activity into new
+work. Activity held separately keeps its original task/session associations.
+Any desired source replanning uses existing explicit planning operations; there
+is no implicit partition, lineage, parent assignment or session start. Batch
+parents may refer to other new tasks, provided the final hierarchy is valid.
+All rejection paths leave inputs unchanged. No UI, persistence, backend API or
+dependency is added.
+
+Run the focused suite and the four existing domain regression suites:
+
+```bash
+gjs -m v2/frontend/tests/task-hierarchy.test.js
+gjs -m v2/frontend/tests/task-classification.test.js
+gjs -m v2/frontend/tests/task-planning.test.js
+gjs -m v2/frontend/tests/session-plan.test.js
+gjs -m v2/frontend/tests/task-history.test.js
+```
+
+Tests cover single-parent replacement/detachment, invalid parents and cycles,
+scope isolation, deep hierarchies, stable identities, split history preservation,
+explicit new plans, destination capacity and composition with existing operations.
+They validate the domain contract; UI, persistence and session lifecycle are outside
+this slice.
+
 ## Limits
 
 Settings, the public development-only secret, and Django static serving are for
