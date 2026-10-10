@@ -46,6 +46,12 @@ function validatePlanning(record) {
   for (const key of ["id", "ownershipScopeId", "planDayId"]) {
     requireReference(record[key], key);
   }
+  if (record.parentTaskId !== undefined && record.parentTaskId !== null) {
+    requireReference(record.parentTaskId, "parentTaskId");
+    if (record.parentTaskId === record.id) {
+      throw new TypeError("A task cannot be its own parent.");
+    }
+  }
   if (typeof record.title !== "string" || record.title.trim() === "") {
     throw new TypeError("title must be a non-empty string.");
   }
