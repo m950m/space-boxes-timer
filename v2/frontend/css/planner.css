@@ -25,3 +25,8 @@ button[type=submit] { background: #174a8b; color: white; }
 .split-section { margin-top: 1.25rem; border-top: 2px solid #b4bdcb; padding-top: .25rem; }
 .check-label { display: flex; align-items: center; gap: .5rem; }
 .check-label input { width: auto; }
+.break-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; border-bottom: 1px solid #b4bdcb; padding-bottom: .5rem; }
+.break-row label { margin-top: 0; }
+.break-row input { width: 8rem; }
+.break-row select { width: auto; flex: 1; min-width: 12rem; }
+#break-list { padding-block: .25rem; }

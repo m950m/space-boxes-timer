@@ -8,6 +8,7 @@ const items = $("focus-items");
 const splitForm = $("split-form");
 const splitFields = $("split-fields");
 const splitItems = $("split-items");
+const breakList = $("break-list");
 const status = $("v2-startup-status");
 const errorBox = $("planner-error");
 const viewDay = $("view-day");
@@ -124,6 +125,7 @@ function labelRows(container, movable) {
 function labelItems() {
   labelRows(items, true);
   updateTotals();
+  refreshBreaks();
 }
 
 function labelSplitItems() {
@@ -164,6 +166,75 @@ function addSplitItem(item = { id: crypto.randomUUID() }) {
   return addSessionRow(splitItems, item, false);
 }
 
+// Gaps of the current draft session order; breaks attach to adjacent identities.
+function draftGaps() {
+  const rows = [...items.children];
+  const gaps = [];
+  for (let index = 0; index + 1 < rows.length; index++) {
+    gaps.push({ after: rows[index].dataset.id, before: rows[index + 1].dataset.id, index });
+  }
+  return gaps;
+}
+
+function refreshBreaks() {
+  const gaps = draftGaps();
+  $("add-break").disabled = gaps.length === 0;
+  [...breakList.children].forEach((row, index) => {
+    row.querySelector("label").textContent = `Break ${index + 1} duration (minutes, required)`;
+    const select = row.querySelector("select");
+    select.setAttribute("aria-label", `Placement of break ${index + 1} between adjacent sessions`);
+    row.querySelector("button").setAttribute("aria-label", `Remove planned break ${index + 1}`);
+    const current = row.dataset.placement ?? "";
+    select.replaceChildren();
+    for (const gap of gaps) {
+      select.append(new Option(`Between session ${gap.index + 1} and ${gap.index + 2}`, `${gap.after}|${gap.before}`));
+    }
+    if (current && !gaps.some((gap) => `${gap.after}|${gap.before}` === current)) {
+      select.append(new Option("Previous placement (sessions moved apart)", current));
+    }
+    if (current) select.value = current;
+    else if (gaps.length) select.value = `${gaps[0].after}|${gaps[0].before}`;
+    row.dataset.placement = select.value;
+  });
+}
+
+function addBreakRow(plannedBreak = {}) {
+  const row = element("div", undefined, "break-row");
+  row.dataset.breakId = plannedBreak.id ?? crypto.randomUUID();
+  if (plannedBreak.afterFocusItemId) {
+    row.dataset.placement = `${plannedBreak.afterFocusItemId}|${plannedBreak.beforeFocusItemId}`;
+  }
+  const input = element("input");
+  input.type = "number";
+  input.step = "any";
+  input.required = true;
+  input.id = `break-minutes-${row.dataset.breakId}`;
+  input.value = plannedBreak.breakMinutes ?? "";
+  const label = element("label");
+  label.htmlFor = input.id;
+  const select = element("select");
+  select.id = `break-placement-${row.dataset.breakId}`;
+  const remove = element("button", "Remove");
+  remove.type = "button";
+  row.append(label, input, select, remove);
+  breakList.append(row);
+  refreshBreaks();
+  return input;
+}
+
+function draftBreaks() {
+  return [...breakList.children].map((row) => {
+    const [afterFocusItemId, beforeFocusItemId] = row.querySelector("select").value.split("|");
+    return {
+      id: row.dataset.breakId,
+      afterFocusItemId,
+      beforeFocusItemId,
+      breakMinutes: row.querySelector("input").value.trim() === ""
+        ? NaN : Number(row.querySelector("input").value),
+    };
+  });
+}
+
 function resetEditor(task) {
   editingTask = task;
   form.reset();
@@ -176,8 +247,10 @@ function resetEditor(task) {
   $("task-note").value = task?.note ?? "";
   populateParents(task);
   $("task-parent").value = task?.parentTaskId ?? "";
+  breakList.replaceChildren();
   items.replaceChildren();
   for (const item of task?.sessionPlan ?? [{ id: crypto.randomUUID() }]) addItem(item);
+  for (const plannedBreak of task?.plannedBreaks ?? []) addBreakRow(plannedBreak);
   resetSplitDraft(task);
 }
 
@@ -240,6 +313,9 @@ function renderTasks() {
       card.append(element("p", `Planned start: ${String(start)}${zone ? ` (${zone})` : ""}`),
         element("p", `${totals.sessionCount} sessions · ${totals.plannedFocusMinutes} minutes total focus`),
         element("p", `Session durations: ${task.sessionPlan.map((item) => item.activeMinutes).join(" → ")} minutes`));
+      if (task.plannedBreaks?.length) {
+        card.append(element("p", `Planned breaks: ${task.plannedBreaks.map((plannedBreak) => plannedBreak.breakMinutes).join(" → ")} minutes`));
+      }
       if (task.note) card.append(element("p", task.note, "note"));
       if (task.completedAt) card.append(element("p", "Marked complete"));
       if (task.cancelledAt) card.append(element("p", "Cancelled"));
@@ -285,6 +361,22 @@ function wireSessionRows(container, movable, focusFallbackId, afterChange) {
 }
 wireSessionRows(items, true, "add-focus", unsaved);
 wireSessionRows(splitItems, false, "add-split-focus", unsavedSplit);
+breakList.addEventListener("change", (event) => {
+  const select = event.target.closest("select");
+  if (select) select.closest(".break-row").dataset.placement = select.value;
+});
+breakList.addEventListener("input", unsaved);
+breakList.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const row = button.closest(".break-row");
+  const neighbor = row.nextElementSibling ?? row.previousElementSibling;
+  row.remove();
+  (neighbor?.querySelector("input") ?? $("add-break")).focus();
+  refreshBreaks();
+  unsaved();
+});
+$("add-break").addEventListener("click", () => { addBreakRow().focus(); unsaved(); });
 $("cancel-edit").addEventListener("click", () => {
   resetEditor();
   status.textContent = "Editor cleared. Saved plans unchanged.";
@@ -308,13 +400,23 @@ function commandsFromForm() {
       invalid(input, "Enter a numeric duration in minutes for each focus session.");
     }
   }
+  for (const row of breakList.children) {
+    const input = row.querySelector("input");
+    if (!input.validity.valid || input.value.trim() === "" || !Number.isFinite(Number(input.value))) {
+      invalid(input, "Enter a numeric duration in minutes for each planned break.");
+    }
+    if (!row.querySelector("select").value) {
+      invalid(row.querySelector("select"), "Choose a placement between adjacent sessions for each planned break.");
+    }
+  }
   const day = $("task-day").value;
   const time = $("task-start").value;
   const previousTime = editingTask?.plannedStart?.time ?? editingTask?.plannedStart;
   const plannedStart = editingTask && previousTime === time && editingTask.planDayId === day
     ? editingTask.plannedStart : { time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
   const changes = {
-    title: $("task-title").value, plannedStart, sessionPlan: draftItems(), note: $("task-note").value,
+    title: $("task-title").value, plannedStart, sessionPlan: draftItems(), plannedBreaks: draftBreaks(),
+    note: $("task-note").value,
   };
   const classification = $("task-classification").value;
   const parentTaskId = $("task-parent").value || null;

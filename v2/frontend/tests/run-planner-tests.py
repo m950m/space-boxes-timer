@@ -449,6 +449,63 @@ def suite(client, url):
     fill(client, "#view-day", "2026-10-20")
     check(client, "document.querySelectorAll('#extra-tasks article').length === 3 && [...document.querySelectorAll('#extra-tasks article')].filter(a => a.textContent.includes('Subtask of: Hierarchy parent')).length === 1",
           "hierarchy edits and split work persist through reload")
+    # WS-B2: planned breaks are planning data between adjacent sessions.
+    fill(client, "#task-title", "Break day")
+    fill(client, "#task-day", "2026-10-22")
+    fill(client, "#task-start", "09:00")
+    fill(client, "#focus-items input", "25")
+    click(client, "#add-focus")
+    fill(client, "#focus-items li:nth-child(2) input", "25")
+    click(client, "#add-focus")
+    fill(client, "#focus-items li:nth-child(3) input", "40")
+    check(client, "document.querySelector('#add-break').disabled === false",
+          "breaks can be planned once adjacent sessions exist")
+    click(client, "#add-break")
+    fill(client, "#break-list .break-row:nth-child(1) input", "5")
+    click(client, "#add-break")
+    fill(client, "#break-list .break-row:nth-child(2) input", "10")
+    select_option(client, "#break-list .break-row:nth-child(2) select", "Between session 2 and 3")
+    save(client)
+    check(client, "document.querySelectorAll('#extra-tasks article').length === 1 && document.querySelector('article').textContent.includes('Planned breaks: 5 → 10 minutes')",
+          "planned breaks display beside the task")
+    break_task = next(task for task in stored(client)["tasks"] if task["title"] == "Break day")
+    assert [b["breakMinutes"] for b in break_task["plannedBreaks"]] == [5, 10]
+    assert break_task["plannedBreaks"][0]["beforeFocusItemId"] == break_task["sessionPlan"][1]["id"]
+    assert break_task["plannedBreaks"][1]["afterFocusItemId"] == break_task["sessionPlan"][1]["id"]
+    print("PASS planned breaks persist between adjacent session identities", flush=True)
+    click(client, "article button")
+    check(client, "document.querySelectorAll('#break-list .break-row').length === 2 && document.querySelector('#break-list .break-row:nth-child(1) input').value === '5'",
+          "editing reloads planned breaks with durations and placements")
+    fill(client, "#break-list .break-row:nth-child(1) input", "7")
+    click(client, "#focus-items li:nth-child(2) [data-action=up]")
+    save(client, False)
+    check(client, "document.querySelector('#planner-error').textContent.includes('adjacent') && document.querySelectorAll('#break-list .break-row').length === 2",
+          "reordering that separates a break is rejected until placement is fixed")
+    select_option(client, "#break-list .break-row:nth-child(1) select", "Between session 1 and 2")
+    select_option(client, "#break-list .break-row:nth-child(2) select", "Between session 2 and 3")
+    save(client)
+    reordered = next(task for task in stored(client)["tasks"] if task["title"] == "Break day")
+    assert [item["activeMinutes"] for item in reordered["sessionPlan"]] == [25, 25, 40]
+    assert reordered["plannedBreaks"][0]["id"] == break_task["plannedBreaks"][0]["id"]
+    assert reordered["plannedBreaks"][1]["id"] == break_task["plannedBreaks"][1]["id"]
+    assert reordered["plannedBreaks"][0]["breakMinutes"] == 7
+    assert reordered["plannedBreaks"][0]["afterFocusItemId"] == reordered["sessionPlan"][0]["id"]
+    print("PASS break identity and placement edits survive reorder recovery", flush=True)
+    click(client, "article button")
+    click(client, "#break-list .break-row:nth-child(2) button")
+    save(client)
+    after_removal = next(task for task in stored(client)["tasks"] if task["title"] == "Break day")
+    assert len(after_removal["plannedBreaks"]) == 1
+    assert after_removal["retiredPlannedBreaks"][0]["id"] == break_task["plannedBreaks"][1]["id"]
+    print("PASS removed break retires under its identity", flush=True)
+    click(client, "article button")
+    client.evaluate("document.querySelector('#add-break').focus()")
+    key(client, "Enter", 13)
+    check(client, "document.querySelectorAll('#break-list .break-row').length === 2 && document.activeElement.tagName === 'INPUT'",
+          "keyboard adds a planned break row")
+    click(client, "#cancel-edit")
+    check(client, "document.querySelectorAll('#break-list .break-row').length === 0 && document.querySelector('#add-break').disabled === true",
+          "cancel returns the editor to an empty unsaved task without breaks")
     client.call("Emulation.setDeviceMetricsOverride", width=375, height=812, deviceScaleFactor=1, mobile=True)
     check(client, "document.documentElement.scrollWidth <= innerWidth", "planner fits a narrow viewport")
     assert not client.errors, client.errors
