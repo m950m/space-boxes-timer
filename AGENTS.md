@@ -22,6 +22,7 @@ Task authorization permits only scoped actions. Commits and local branch creatio
 ## Read only relevant authoritative sources
 
 - Process: [canonical v2 engineering workflow](_docs/agents/v2-agent-workflow.md).
+- Handoff/resume: [agent handoff protocol](_docs/agents/v2-agent-workflow.md#agent-handoff-protocol).
 - Product: [PRD](_docs/product/v2-prd.md) and [owner decisions](_docs/product/owner-decisions.md).
 - Architecture: [approved architecture](_docs/architecture/architecture.md); individual ADRs only when needed.
 - Domain/data: [V2-005 model](_docs/data/v2-data-model.md) and [ERD](_docs/data/v2-erd.md), only for relevant domain, persistence, authority, synchronization or data-lifecycle work.
