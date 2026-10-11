@@ -36,3 +36,10 @@ button[type=submit] { background: #174a8b; color: white; }
 .resource-links a { color: #174a8b; }
 .resource-links span { color: #67758a; }
 article:focus-visible, article:focus { outline: 3px solid #174a8b; outline-offset: 3px; }
+.primary-card { border-left: 4px solid #174a8b; }
+#day-summary { font-weight: 600; }
+@media (max-width: 45rem) {
+  .break-row input, .break-row select, .resource-row input { width: 100%; flex-basis: 100%; }
+  .break-row select { min-width: 0; }
+  .resource-row input { min-width: 0; }
+}

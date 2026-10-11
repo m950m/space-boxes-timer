@@ -556,7 +556,29 @@ def suite(client, url):
     fill(client, "#view-day", "2026-10-23")
     check(client, "document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article').textContent.includes('Marked complete') && document.querySelector('article').textContent.includes('Cancelled')",
           "resource links and lifecycle states persist through reload")
+    # WS-B4: day summary, Primary distinction, keyboard flow, small screens.
+    check(client, "!document.querySelector('article').classList.contains('primary-card')",
+          "Extra tasks do not carry the Primary marker")
+    fill(client, "#task-title", "Primary marker")
+    fill(client, "#task-day", "2026-10-23")
+    fill(client, "#task-start", "10:00")
+    fill(client, "#task-classification", "primary")
+    fill(client, "#focus-items input", "25")
+    save(client)
+    check(client, "document.querySelector('#primary-tasks article').classList.contains('primary-card') && document.querySelector('#day-summary').textContent.startsWith('1 of up to 3 Primary') && document.querySelector('#day-summary').textContent.includes('1 Extra')",
+          "Primary tasks carry the marker and the day summary distinguishes both classifications")
+    client.evaluate("document.querySelector('#add-resource').focus()")
+    key(client, "Tab", 9)
+    check(client, "document.activeElement.id === 'task-note'",
+          "Tab order continues from resource rows to the note")
+    client.evaluate("document.querySelector('#task-parent').focus()")
+    key(client, "Tab", 9)
+    check(client, "document.activeElement.id === 'save-task'",
+          "parent choice precedes save in the Tab order")
+    client.call("Emulation.setDeviceMetricsOverride", width=320, height=700, deviceScaleFactor=1, mobile=True)
+    check(client, "document.documentElement.scrollWidth <= innerWidth", "planner fits a 320px viewport")
     client.call("Emulation.setDeviceMetricsOverride", width=375, height=812, deviceScaleFactor=1, mobile=True)
+    check(client, "document.documentElement.scrollWidth <= innerWidth", "planner fits a narrow viewport")
     check(client, "document.documentElement.scrollWidth <= innerWidth", "planner fits a narrow viewport")
     assert not client.errors, client.errors
     return stored(client)
@@ -581,6 +603,7 @@ def main():
                 expected = suite(client, url)
             with browser_session(browser, profile) as client:
                 navigate(client, url)
+                check(client, "document.activeElement.id === 'task-title'", "initial load focuses the editor title")
                 assert stored(client) == expected, "Restart changed committed scope/tasks"
                 fill(client, "#view-day", "2026-10-11")
                 check(client, "document.querySelector('#extra-tasks h3').textContent === 'Edited plan'", "browser process restart retains committed planner")

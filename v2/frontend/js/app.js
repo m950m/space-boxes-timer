@@ -356,6 +356,7 @@ function renderTasks() {
       const card = element("article");
       card.dataset.taskId = task.id;
       card.tabIndex = -1;
+      if (classification === "primary") card.classList.add("primary-card");
       const totals = getTaskPlanningTotals(task);
       const start = task.plannedStart?.time ?? task.plannedStart;
       const zone = task.plannedStart?.timezone;
@@ -414,6 +415,12 @@ function renderTasks() {
       container.append(card);
     }
   }
+  const dayTasks = snapshot.tasks.filter((task) => task.planDayId === viewDay.value);
+  const primaryCount = dayTasks.filter((task) => task.classification === "primary").length;
+  const plannedMinutes = dayTasks.reduce((sum, task) => sum + getTaskPlanningTotals(task).plannedFocusMinutes, 0);
+  $("day-summary").textContent = dayTasks.length
+    ? `${primaryCount} of up to 3 Primary · ${dayTasks.length - primaryCount} Extra · ${plannedMinutes} minutes planned focus`
+    : "No tasks planned for this day yet.";
 }
 
 // Explicit lifecycle decisions only; no session outcome ever completes a task.
@@ -639,6 +646,7 @@ async function loadPlans() {
     status.textContent = "Error — local plans could not be loaded.";
     errorBox.textContent = error.message;
   } finally { setBusy(false); }
+  if (snapshot) $("task-title").focus();
 }
 $("reload-plans").addEventListener("click", loadPlans);
 planningStore.then(async (opened) => {
