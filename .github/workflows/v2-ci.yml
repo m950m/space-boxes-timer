@@ -1,0 +1,175 @@
+# V2 CI quality gate (Issue #39, parent #37). Read-only checks for the `v2`
+# integration branch; no deployment, no secrets, no Node/npm dependency.
+#
+# External versions verified 2026-10-12 from official sources:
+# - `ubuntu-26.04` x64 label exists (actions/runner-images). Its image ships
+#   Google Chrome and Chromium, but not gjs, and its default `python3` is not
+#   the 3.14 series, so gjs is installed via apt and Python is selected with
+#   actions/setup-python.
+# - actions/checkout v7.0.1 (3d3c42e5aac5ba805825da76410c181273ba90b1)
+# - actions/setup-python v7.0.0 (5fda3b95a4ea91299a34e894583c3862153e4b97),
+#   which serves Python 3.14.x from the actions/python-versions manifest.
+
+name: V2 CI
+
+on:
+  pull_request:
+    branches: [v2]
+  push:
+    branches: [v2]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gjs-domain:
+    name: GJS domain suites and diff hygiene
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      # Full history: on pull_request the checked-out HEAD is GitHub's
+      # synthetic merge commit, so the real base comes from merge-base(HEAD,
+      # origin/v2); on push the previous branch tip is needed.
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine diff base for the current event
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$(git merge-base HEAD origin/v2)"
+          elif [ -n "$EVENT_BEFORE" ] && git cat-file -e "$EVENT_BEFORE^{commit}" 2>/dev/null; then
+            base="$EVENT_BEFORE"
+          else
+            # Unavailable 'before' sha (e.g. stale ref): fall back to the
+            # first parent of the pushed commit.
+            base="$(git rev-parse HEAD^)"
+          fi
+          echo "DIFF_BASE=$base" >> "$GITHUB_ENV"
+          git -c core.quotePath=false diff --name-only "$base" "$GITHUB_SHA"
+
+      - name: V1 isolation (changes stay inside authorized v2 areas)
+        run: |
+          set -euo pipefail
+          # Area prefixes, not a repository-wide file allowlist: v2 sources,
+          # v2 agent documentation and this workflow's own directory.
+          violations="$(git -c core.quotePath=false diff --name-only "$DIFF_BASE" "$GITHUB_SHA" \
+            | grep -vE '^(v2/|_docs/|\.github/)' || true)"
+          if [ -n "$violations" ]; then
+            echo "::error::V1 isolation violated - changed files outside authorized v2 areas:"
+            printf '%s\n' "$violations"
+            exit 1
+          fi
+
+      - name: Whitespace hygiene of changed lines
+        run: |
+          set -euo pipefail
+          if ! git diff --check "$DIFF_BASE" "$GITHUB_SHA"; then
+            echo "::error::Whitespace problems introduced by this change (see listed lines above)."
+            exit 1
+          fi
+
+      - name: Install gjs
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gjs
+
+      - name: Verify gjs availability
+        run: |
+          command -v gjs >/dev/null 2>&1 || {
+            echo "::error::gjs is unavailable on this runner; domain suites cannot run (no silent skip)."
+            exit 1
+          }
+          gjs --version
+
+      - name: Run the six GJS domain suites
+        run: |
+          set -euo pipefail
+          gjs -m v2/frontend/tests/task-classification.test.js
+          gjs -m v2/frontend/tests/task-planning.test.js
+          gjs -m v2/frontend/tests/session-plan.test.js
+          gjs -m v2/frontend/tests/task-history.test.js
+          gjs -m v2/frontend/tests/task-hierarchy.test.js
+          gjs -m v2/frontend/tests/task-resources.test.js
+
+  chrome-browser:
+    name: Real-Chrome persistence and planner suites
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Verify a real browser is available
+        run: |
+          browser="$(command -v google-chrome || command -v chromium)" || {
+            echo "::error::No google-chrome or chromium executable on this runner; browser suites cannot run (no silent skip)."
+            exit 1
+          }
+          "$browser" --version
+
+      - name: Run IndexedDB persistence suite in real Chrome
+        run: python v2/frontend/tests/run-browser-tests.py
+
+      - name: Run planner UI suite in real Chrome
+        run: python v2/frontend/tests/run-planner-tests.py
+
+  django-smoke:
+    name: Django smoke tests (Python 3.14)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python 3.14
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      # The venv must be built from the setup-python interpreter, not an
+      # ambiguous default python3; the exact version is asserted before any
+      # pinned dependency is installed.
+      - name: Create venv with selected interpreter and install pinned Django
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PYTHON" - <<'EOF'
+          import sys
+          if sys.version_info[:2] != (3, 14):
+              raise SystemExit(f"Python 3.14 required, found {sys.version}")
+          print("Selected interpreter:", sys.version)
+          EOF
+          "$PYTHON" -m venv v2/.venv
+          v2/.venv/bin/python -m pip install -r v2/requirements.txt
+
+      - name: pip check
+        run: v2/.venv/bin/python -m pip check
+
+      - name: Django system check
+        run: v2/.venv/bin/python v2/backend/manage.py check
+
+      - name: Django smoke tests
+        run: v2/.venv/bin/python v2/backend/manage.py test config
