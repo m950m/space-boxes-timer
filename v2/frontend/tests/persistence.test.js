@@ -28,6 +28,15 @@ async function withUIStore(run) {
   try {
     await loaded;
     store = await (await frame.contentWindow.eval('import("/js/app.js")')).planningStore;
+    // The planner hydrates tasks after opening the database connection.
+    await new Promise((resolve) => {
+      const fields = frame.contentDocument.getElementById("editor-fields");
+      if (!fields.disabled) { resolve(); return; }
+      const observer = new MutationObserver(() => {
+        if (!fields.disabled) { observer.disconnect(); resolve(); }
+      });
+      observer.observe(fields, { attributes: true, attributeFilter: ["disabled"] });
+    });
     await run(store, frame.contentDocument.getElementById("v2-startup-status"), frame.contentWindow);
   } finally { store?.close(); frame.remove(); }
 }

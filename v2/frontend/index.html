@@ -3,13 +3,57 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Space Boxes Timer V2 Foundation</title>
+    <title>Space Boxes — Local planner</title>
+    <link rel="stylesheet" href="./css/planner.css">
     <script type="module" src="./js/app.js"></script>
   </head>
   <body>
     <main>
-      <h1>Space Boxes Timer V2 Foundation</h1>
-      <p id="v2-startup-status" role="status">Starting V2 frontend…</p>
+      <h1>Local planner</h1>
+      <p>Plan here without an account. Tasks are saved in this browser.</p>
+      <p id="v2-startup-status" role="status" aria-live="polite" aria-atomic="true">Loading local plans…</p>
+      <p id="planner-error" role="alert" aria-atomic="true"></p>
+      <p id="timezone-context"></p>
+      <button id="reload-plans" type="button" disabled>Reload saved plans (discard edits)</button>
+      <div class="layout">
+        <section aria-labelledby="editor-heading">
+          <h2 id="editor-heading">Create task</h2>
+          <form id="task-form" novalidate aria-describedby="planner-error">
+            <fieldset id="editor-fields" disabled>
+              <label for="task-title">Title (required)</label>
+              <input id="task-title" name="title" required>
+              <label for="task-day">Plan Day (required)</label>
+              <input id="task-day" name="day" type="date" required>
+              <label for="task-start">Planned start (required)</label>
+              <input id="task-start" name="start" type="time" step="any" required aria-describedby="start-help">
+              <p id="start-help">Local time. Planning a start does not start focus automatically.</p>
+              <label for="task-classification">Classification</label>
+              <select id="task-classification" name="classification">
+                <option value="extra">Extra</option>
+                <option value="primary">Primary</option>
+              </select>
+              <h3>Focus sessions (in order)</h3>
+              <p>Choose each duration in minutes. Count and total follow your session plan.</p>
+              <ol id="focus-items"></ol>
+              <button id="add-focus" type="button">Add focus session</button>
+              <p id="focus-totals" role="status" aria-live="polite"></p>
+              <label for="task-note">Note (optional)</label>
+              <textarea id="task-note" name="note"></textarea>
+              <button id="save-task" type="submit">Save task</button>
+              <button id="cancel-edit" type="button">Clear / new task</button>
+            </fieldset>
+          </form>
+        </section>
+        <section aria-labelledby="plans-heading">
+          <h2 id="plans-heading">Your plan</h2>
+          <label for="view-day">Show Plan Day</label>
+          <input id="view-day" type="date" required disabled>
+          <div id="task-list" aria-busy="true">
+            <h3>Primary</h3><div id="primary-tasks"></div>
+            <h3>Extra</h3><div id="extra-tasks"></div>
+          </div>
+        </section>
+      </div>
     </main>
   </body>
 </html>

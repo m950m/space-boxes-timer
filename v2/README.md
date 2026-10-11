@@ -1,10 +1,10 @@
-# V2 minimal runnable foundation
+# V2 local planner
 
-This foundation provides an isolated Vanilla JavaScript entry point and a local
-Django project, plus the planning domain slices described below. The
-page still displays only a status message. Browser-local IndexedDB persistence
-is implemented for planning records; there are no accounts, backend database or
-migrations. Existing V1 files and storage keys are unchanged.
+V2 provides an isolated Vanilla JavaScript local planner and a local Django
+project, using the planning domain slices and native IndexedDB adapter described
+below. Create, display, edit, classify and reload tasks without an account.
+There are no backend database or migrations. Existing V1 files and storage keys
+are unchanged.
 
 ## Setup
 
@@ -38,9 +38,9 @@ python3 -m http.server 8766 --bind 127.0.0.1 --directory v2/frontend
 ```
 
 Open <http://127.0.0.1:8766/>. This mode needs neither Django nor the virtual
-environment. In both modes, the initial “Starting V2 frontend…” message changes
-to “V2 frontend ready. Local plans loaded.” after IndexedDB initialization and
-validation. Storage failures display “Error” with the reason. Stop either server
+environment. In both modes, “Loading local plans…” changes to “Local plans
+loaded.” after IndexedDB initialization, validation and task hydration. Storage
+failures display “Error” with the reason. Stop either server
 with Ctrl+C.
 
 ## Verify
@@ -55,7 +55,7 @@ git status --short
 ```
 
 The built-in Django runner uses `SimpleTestCase` without database setup. The
-tests check the frontend document and module reference, JavaScript delivery,
+tests check the frontend document and asset references, JavaScript/CSS delivery,
 404 responses for unknown routes, and disabled asset serving outside development
 mode. They do not execute JavaScript.
 
@@ -70,12 +70,55 @@ python3 -m http.server 8765
 Open <http://localhost:8765/>. Inspect all new files and confirm the task changes
 are confined to `v2/`.
 
+## Usable local planner (V2-011, Issue #26)
+
+Choose a Plan Day in **Your plan** to see Primary and Extra tasks. Use the editor
+to enter a title, Plan Day, chosen local start time and at least one focus
+duration. Add, remove or move sessions to choose their order; count and total
+focus minutes are derived from that plan. Durations have no new product bounds
+or defaults. Note is optional. **Save task** commits the full change, then updates
+the displayed list. **Edit task** loads existing details into the same editor.
+Classification changes and moves use the existing domain operations, including
+the maximum of three Primary tasks per scope/day. No focus starts automatically.
+
+The UI uses the local calendar date (`YYYY-MM-DD`) as its opaque `planDayId` and
+stores scheduling intent as `plannedStart: { time, timezone }`, with browser
+local time text and IANA system timezone. It does not convert intent into an
+actual UTC start or reinterpret historical values. Unchanged scheduling intent
+keeps its saved context; explicit day/time edits use the current system timezone.
+The page displays the current timezone, saved task timezone and a notice if the
+system timezone changes while the page is open and refocused.
+
+IndexedDB remains the local authority. The UI keeps a loaded projection and an
+unsaved editor draft, never a separate persisted task collection. Saved appears
+only after transaction commit. Failed validation/writes keep the draft and
+previous saved list. Stale revisions are rejected; **Reload saved plans (discard
+edits)** explicitly reloads the storage snapshot. Task/item identities, retired
+items, unrelated metadata and recorded history pass through existing commands.
+Resources, hierarchy and break editing/opening controls are deferred; existing
+values are retained and domain restrictions still apply to edited session plans.
+Keyboard controls, focus outlines, labels, status and errors support the WCAG
+2.2 AA target; this is not a conformance claim. Browser storage is not a backup.
+
+Run the focused real-browser UI suite (installed Chrome/Chromium, Python stdlib):
+
+```bash
+python3 v2/frontend/tests/run-planner-tests.py
+```
+
+It covers create/save/reload/edit/classify/reload, browser process restart,
+keyboard Tab/Enter/text input, day filtering and rescheduling, identity retention,
+fourth-Primary rollback, invalid fields, quota failure and retry, stale-revision
+recovery, status announcements and a narrow viewport. It uses a disposable origin
+and profile. Run the existing persistence browser suite and domain regressions
+below alongside it; Django smoke tests check the updated document and serving.
+
 ## Local planning persistence (V2-010, Issue #24)
 
 `frontend/js/persistence/planning-store.js` uses native IndexedDB and structured
 clone, with no new dependencies. `openPlanningStore({ onStatus })` resolves to
 `{ localScopeId, load, commit, close }`. The page's `app.js` exports a
-`planningStore` promise for this boundary; it adds no planner controls. The
+`planningStore` promise for this boundary; the planner uses its commands. The
 existing `role="status"` area displays Loading, Saving, Saved or Error according
 to actual operations. Initialization/load readiness is distinct from a save.
 Status follows the latest operation started on that store; older completions
@@ -186,7 +229,8 @@ These names define a small module contract, not a full Task creation API,
 identifier-generation scheme or persistence schema. Other fields, including
 historical activity and lifecycle state, pass through unchanged; nested data is
 shared, not rewritten. There is no implicit task/session start or completion.
-The module has no DOM, backend or storage dependency and is not wired into the UI.
+The module has no DOM, backend or storage dependency; the local planner invokes
+it through the IndexedDB adapter.
 
 Run the focused automated ES-module tests from the repository root:
 
@@ -236,8 +280,9 @@ change classification across their task collection.
 
 This is an in-memory domain contract, not a persistence schema. Explicit Plan Day
 rescheduling and task decisions are described in V2-009D below.
-The module is not wired into
-the UI and has no storage, backend, timer or session-execution dependency.
+The local planner uses the module for derived totals and, through the IndexedDB
+adapter, planning edits. The module has no storage, backend, timer or
+session-execution dependency.
 
 Run both domain suites with the existing GJS execution option:
 
