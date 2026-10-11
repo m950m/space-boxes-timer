@@ -162,6 +162,16 @@ def fill(client, selector, value):
     }})()""")
 
 
+def select_option(client, selector, label):
+    client.evaluate(f"""(() => {{
+      const select = document.querySelector({json.dumps(selector)});
+      const option = [...select.options].find(o => o.textContent === {json.dumps(label)});
+      if (!option) throw new Error('missing option: ' + {json.dumps(label)});
+      select.value = option.value;
+      select.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    }})()""")
+
+
 def click(client, selector):
     client.evaluate(f"document.querySelector({json.dumps(selector)}).click()")
 
@@ -362,6 +372,83 @@ def suite(client, url):
     click(client, "#cancel-edit")
     check(client, "document.querySelector('#v2-startup-status').getAttribute('role') === 'status' && document.querySelector('#planner-error').getAttribute('role') === 'alert'",
           "screen-reader status and errors are exposed")
+    # WS-B1: subtask parentage is organizational; splitting is additive.
+    fill(client, "#view-day", "2026-10-20")
+    fill(client, "#task-title", "Hierarchy parent")
+    fill(client, "#task-day", "2026-10-20")
+    fill(client, "#task-start", "09:00")
+    fill(client, "#focus-items input", "25")
+    save(client)
+    fill(client, "#task-title", "Hierarchy child")
+    fill(client, "#task-start", "10:00")
+    fill(client, "#focus-items input", "25")
+    check(client, "[...document.querySelector('#task-parent').options].some(o => o.textContent === 'Hierarchy parent — 2026-10-20')",
+          "saved tasks are offered as parents")
+    select_option(client, "#task-parent", "Hierarchy parent — 2026-10-20")
+    save(client)
+    check(client, "[...document.querySelectorAll('#extra-tasks article')].some(a => a.textContent.includes('Subtask of: Hierarchy parent'))",
+          "child task displays its parent relationship")
+    scope = stored(client)["tasks"]
+    parent = next(task for task in scope if task["title"] == "Hierarchy parent")
+    child = next(task for task in scope if task["title"] == "Hierarchy child")
+    assert child["parentTaskId"] == parent["id"]
+    print("PASS assigned parent persists on the child identity", flush=True)
+    click(client, "#extra-tasks article button")
+    check(client, "document.querySelector('#task-title').value === 'Hierarchy parent' && document.querySelector('#task-parent').value === '' && ![...document.querySelector('#task-parent').options].some(o => o.textContent === 'Hierarchy child — 2026-10-20')",
+          "editing a task never offers itself or its descendant as a parent")
+    click(client, "#extra-tasks article:nth-of-type(2) button")
+    check(client, "document.querySelector('#task-title').value === 'Hierarchy child' && document.querySelector('#task-parent').value !== ''",
+          "editing the child restores its saved parent selection")
+    client.evaluate("(() => { const s = document.querySelector('#task-parent'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()")
+    save(client)
+    check(client, "![...document.querySelectorAll('#extra-tasks article')].some(a => a.textContent.includes('Subtask of:'))",
+          "detaching removes the displayed parent relationship")
+    child = next(task for task in stored(client)["tasks"] if task["title"] == "Hierarchy child")
+    assert not child.get("parentTaskId")
+    print("PASS detached child keeps its identity without a parent", flush=True)
+    click(client, "#extra-tasks article button")
+    check(client, "document.querySelector('#task-title').value === 'Hierarchy parent' && document.querySelector('#split-fields').disabled === false && document.querySelector('#split-day').value === '2026-10-20'",
+          "editing enables split with the source Plan Day default")
+    fill(client, "#split-title", "Split piece")
+    fill(client, "#split-start", "13:00")
+    fill(client, "#split-items input", "15")
+    check(client, "document.querySelector('#split-totals').textContent.includes('1 sessions · 15')",
+          "split totals derive from the new work plan")
+    click(client, "#split-as-subtask")
+    click(client, "#split-task")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Split work created. The edited task is unchanged.'")
+    check(client, "document.querySelectorAll('#extra-tasks article').length === 3",
+          "split work appears beside the unchanged source")
+    check(client, "[...document.querySelectorAll('#extra-tasks article')].some(a => a.textContent.includes('Split piece') && a.textContent.includes('Subtask of: Hierarchy parent'))",
+          "split work may start as a subtask of the source")
+    scope = stored(client)["tasks"]
+    piece = next(task for task in scope if task["title"] == "Split piece")
+    parent_after = next(task for task in scope if task["title"] == "Hierarchy parent")
+    assert piece["id"] != parent["id"] and piece["parentTaskId"] == parent["id"]
+    assert [item["activeMinutes"] for item in piece["sessionPlan"]] == [15]
+    assert parent_after == parent, "split changed the source task record"
+    print("PASS split creates separately planned work without changing the source", flush=True)
+    check(client, "document.activeElement.id === 'split-title'", "completed split returns focus to the split editor")
+    click(client, "#split-task")
+    check(client, "document.querySelector('#planner-error').textContent.includes('title') && document.activeElement.id === 'split-title'",
+          "empty split title is rejected with focus on the field")
+    client.evaluate("document.querySelector('#split-as-subtask').focus()")
+    key(client, "Tab", 9)
+    check(client, "document.activeElement.id === 'split-task' && getComputedStyle(document.activeElement).outlineStyle !== 'none'",
+          "split action is keyboard reachable with visible focus")
+    click(client, "#extra-tasks article button")
+    fill(client, "#split-title", "Split elsewhere")
+    fill(client, "#split-day", "2026-10-21")
+    fill(client, "#split-start", "08:00")
+    fill(client, "#split-items input", "30")
+    click(client, "#split-task")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Split work created. The edited task is unchanged.'")
+    check(client, "document.querySelector('#view-day').value === '2026-10-21' && document.querySelectorAll('#extra-tasks article').length === 1",
+          "splitting to another day shows the new work there")
+    navigate(client, url)
+    fill(client, "#view-day", "2026-10-20")
+    check(client, "document.querySelectorAll('#extra-tasks article').length === 3 && [...document.querySelectorAll('#extra-tasks article')].filter(a => a.textContent.includes('Subtask of: Hierarchy parent')).length === 1",
+          "hierarchy edits and split work persist through reload")
     client.call("Emulation.setDeviceMetricsOverride", width=375, height=812, deviceScaleFactor=1, mobile=True)
     check(client, "document.documentElement.scrollWidth <= innerWidth", "planner fits a narrow viewport")
     assert not client.errors, client.errors

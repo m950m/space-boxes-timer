@@ -39,8 +39,39 @@
               <p id="focus-totals" role="status" aria-live="polite"></p>
               <label for="task-note">Note (optional)</label>
               <textarea id="task-note" name="note"></textarea>
+              <label for="task-parent">Parent task (optional)</label>
+              <select id="task-parent" name="parentTaskId" aria-describedby="parent-help">
+                <option value="">No parent</option>
+              </select>
+              <p id="parent-help">Organizational only: no automatic completion, scheduling or time accounting.</p>
               <button id="save-task" type="submit">Save task</button>
               <button id="cancel-edit" type="button">Clear / new task</button>
+            </fieldset>
+          </form>
+          <form id="split-form" novalidate aria-describedby="split-help">
+            <fieldset id="split-fields" disabled>
+              <div class="split-section">
+                <h3>Split this task</h3>
+                <p id="split-help">Available while editing a saved task. Creates separately planned work; the task being edited is not changed and keeps its history.</p>
+                <label for="split-title">New work title (required)</label>
+                <input id="split-title" name="title" required>
+                <label for="split-day">New work Plan Day (required)</label>
+                <input id="split-day" name="day" type="date" required>
+                <label for="split-start">New work planned start (required)</label>
+                <input id="split-start" name="start" type="time" step="any" required>
+                <label for="split-classification">New work classification</label>
+                <select id="split-classification" name="classification">
+                  <option value="extra">Extra</option>
+                  <option value="primary">Primary</option>
+                </select>
+                <h4>New work sessions (in order)</h4>
+                <p>Choose each duration in minutes.</p>
+                <ol id="split-items"></ol>
+                <button id="add-split-focus" type="button">Add new work session</button>
+                <p id="split-totals" role="status" aria-live="polite"></p>
+                <label class="check-label"><input id="split-as-subtask" name="asSubtask" type="checkbox"> Make the new work a subtask of this task</label>
+                <button id="split-task" type="submit">Split work</button>
+              </div>
             </fieldset>
           </form>
         </section>

@@ -5,6 +5,9 @@ const $ = (id) => document.getElementById(id);
 const form = $("task-form");
 const fields = $("editor-fields");
 const items = $("focus-items");
+const splitForm = $("split-form");
+const splitFields = $("split-fields");
+const splitItems = $("split-items");
 const status = $("v2-startup-status");
 const errorBox = $("planner-error");
 const viewDay = $("view-day");
@@ -33,6 +36,7 @@ viewDay.value = today();
 function setBusy(value) {
   busy = value;
   fields.disabled = value || !snapshot;
+  splitFields.disabled = value || !snapshot || !editingTask;
   viewDay.disabled = value || !snapshot;
   $("reload-plans").disabled = value || !store;
   $("task-list").setAttribute("aria-busy", String(value));
@@ -69,40 +73,65 @@ function element(tag, text, className) {
   return node;
 }
 
-function draftItems() {
-  return [...items.children].map((row) => ({
-    ...(editingTask?.sessionPlan.find((item) => item.id === row.dataset.id) ?? {}),
+function rowsDraft(container, sourcePlan) {
+  return [...container.children].map((row) => ({
+    ...(sourcePlan?.find((item) => item.id === row.dataset.id) ?? {}),
     id: row.dataset.id,
     activeMinutes: row.querySelector("input").value.trim() === ""
       ? NaN : Number(row.querySelector("input").value),
   }));
 }
 
-function updateTotals() {
+function draftItems() {
+  return rowsDraft(items, editingTask?.sessionPlan);
+}
+
+function planTotals(container, emptyMessage) {
   try {
     const totals = getTaskPlanningTotals({
       id: "draft", ownershipScopeId: "draft", planDayId: "draft",
-      title: "draft", plannedStart: "draft", sessionPlan: draftItems(),
+      title: "draft", plannedStart: "draft", sessionPlan: rowsDraft(container),
     });
-    $("focus-totals").textContent = `${totals.sessionCount} sessions · ${totals.plannedFocusMinutes} minutes total focus`;
+    return `${totals.sessionCount} sessions · ${totals.plannedFocusMinutes} minutes total focus`;
   } catch {
-    $("focus-totals").textContent = "Add at least one session and enter a duration for each to see the total.";
+    return emptyMessage;
   }
 }
 
-function labelItems() {
-  [...items.children].forEach((row, index) => {
+function updateTotals() {
+  $("focus-totals").textContent = planTotals(items,
+    "Add at least one session and enter a duration for each to see the total.");
+}
+
+function updateSplitTotals() {
+  $("split-totals").textContent = planTotals(splitItems,
+    "Add at least one session and enter a duration for each to see the total.");
+}
+
+function labelRows(container, movable) {
+  [...container.children].forEach((row, index) => {
     row.querySelector("label").textContent = `Session ${index + 1} duration (minutes, required)`;
     for (const button of row.querySelectorAll("button")) {
       button.setAttribute("aria-label", `${button.textContent} session ${index + 1}`);
-      button.disabled = (button.dataset.action === "up" && index === 0)
-        || (button.dataset.action === "down" && index === items.children.length - 1);
+      if (movable) {
+        button.disabled = (button.dataset.action === "up" && index === 0)
+          || (button.dataset.action === "down" && index === container.children.length - 1);
+      }
     }
   });
+}
+
+function labelItems() {
+  labelRows(items, true);
   updateTotals();
 }
 
-function addItem(item = { id: crypto.randomUUID() }) {
+function labelSplitItems() {
+  labelRows(splitItems, false);
+  updateSplitTotals();
+}
+
+function addSessionRow(container, item, movable) {
   const row = element("li", undefined, "focus-item");
   row.dataset.id = item.id;
   const input = element("input");
@@ -114,15 +143,25 @@ function addItem(item = { id: crypto.randomUUID() }) {
   const label = element("label");
   label.htmlFor = input.id;
   row.append(label, input);
-  for (const [action, text] of [["up", "Move up"], ["down", "Move down"], ["remove", "Remove"]]) {
+  for (const [action, text] of movable
+    ? [["up", "Move up"], ["down", "Move down"], ["remove", "Remove"]]
+    : [["remove", "Remove"]]) {
     const button = element("button", text);
     button.type = "button";
     button.dataset.action = action;
     row.append(button);
   }
-  items.append(row);
-  labelItems();
+  container.append(row);
+  (movable ? labelItems : labelSplitItems)();
   return input;
+}
+
+function addItem(item = { id: crypto.randomUUID() }) {
+  return addSessionRow(items, item, true);
+}
+
+function addSplitItem(item = { id: crypto.randomUUID() }) {
+  return addSessionRow(splitItems, item, false);
 }
 
 function resetEditor(task) {
@@ -135,8 +174,50 @@ function resetEditor(task) {
   $("task-start").value = task?.plannedStart?.time ?? task?.plannedStart ?? "";
   $("task-classification").value = task?.classification ?? "extra";
   $("task-note").value = task?.note ?? "";
+  populateParents(task);
+  $("task-parent").value = task?.parentTaskId ?? "";
   items.replaceChildren();
   for (const item of task?.sessionPlan ?? [{ id: crypto.randomUUID() }]) addItem(item);
+  resetSplitDraft(task);
+}
+
+function resetSplitDraft(task) {
+  splitForm.reset();
+  $("split-day").value = task?.planDayId ?? viewDay.value;
+  splitItems.replaceChildren();
+  addSplitItem();
+  splitFields.disabled = busy || !snapshot || !task;
+}
+
+function descendantsOf(tasks, rootId) {
+  const childrenOf = new Map();
+  for (const task of tasks) {
+    if (task.parentTaskId) {
+      if (!childrenOf.has(task.parentTaskId)) childrenOf.set(task.parentTaskId, []);
+      childrenOf.get(task.parentTaskId).push(task.id);
+    }
+  }
+  const excluded = new Set([rootId]);
+  const queue = [rootId];
+  while (queue.length) {
+    for (const child of childrenOf.get(queue.pop()) ?? []) {
+      if (!excluded.has(child)) { excluded.add(child); queue.push(child); }
+    }
+  }
+  return excluded;
+}
+
+/** Offer saved tasks as parents; a task never chooses itself or a descendant. */
+function populateParents(task) {
+  if (!snapshot) return;
+  const select = $("task-parent");
+  const excluded = task ? descendantsOf(snapshot.tasks, task.id) : new Set();
+  select.replaceChildren(new Option("No parent", ""));
+  for (const candidate of snapshot.tasks) {
+    if (!excluded.has(candidate.id)) {
+      select.append(new Option(`${candidate.title} — ${candidate.planDayId}`, candidate.id));
+    }
+  }
 }
 
 function renderTasks() {
@@ -151,7 +232,12 @@ function renderTasks() {
       const totals = getTaskPlanningTotals(task);
       const start = task.plannedStart?.time ?? task.plannedStart;
       const zone = task.plannedStart?.timezone;
-      card.append(element("h3", task.title), element("p", `Planned start: ${String(start)}${zone ? ` (${zone})` : ""}`),
+      card.append(element("h3", task.title));
+      if (task.parentTaskId) {
+        const parent = snapshot.tasks.find((candidate) => candidate.id === task.parentTaskId);
+        card.append(element("p", `Subtask of: ${parent ? parent.title : task.parentTaskId}`, "subtask-of"));
+      }
+      card.append(element("p", `Planned start: ${String(start)}${zone ? ` (${zone})` : ""}`),
         element("p", `${totals.sessionCount} sessions · ${totals.plannedFocusMinutes} minutes total focus`),
         element("p", `Session durations: ${task.sessionPlan.map((item) => item.activeMinutes).join(" → ")} minutes`));
       if (task.note) card.append(element("p", task.note, "note"));
@@ -179,22 +265,26 @@ function unsaved() {
 form.addEventListener("input", unsaved);
 form.addEventListener("change", unsaved);
 $("add-focus").addEventListener("click", () => { addItem().focus(); unsaved(); });
-items.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button) return;
-  const row = button.closest("li");
-  const neighbor = button.dataset.action === "up" ? row.previousElementSibling : row.nextElementSibling;
-  if (button.dataset.action === "remove") {
-    row.remove();
-    (neighbor?.querySelector("input") ?? $("add-focus")).focus();
-  } else if (neighbor) {
-    if (button.dataset.action === "up") items.insertBefore(row, neighbor);
-    else items.insertBefore(neighbor, row);
-    row.querySelector("input").focus();
-  }
-  labelItems();
-  unsaved();
-});
+function wireSessionRows(container, movable, focusFallbackId, afterChange) {
+  container.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    const row = button.closest("li");
+    const neighbor = button.dataset.action === "up" ? row.previousElementSibling : row.nextElementSibling;
+    if (button.dataset.action === "remove") {
+      row.remove();
+      (neighbor?.querySelector("input") ?? $(focusFallbackId)).focus();
+    } else if (neighbor) {
+      if (button.dataset.action === "up") container.insertBefore(row, neighbor);
+      else container.insertBefore(neighbor, row);
+      row.querySelector("input").focus();
+    }
+    (movable ? labelItems : labelSplitItems)();
+    afterChange();
+  });
+}
+wireSessionRows(items, true, "add-focus", unsaved);
+wireSessionRows(splitItems, false, "add-split-focus", unsavedSplit);
 $("cancel-edit").addEventListener("click", () => {
   resetEditor();
   status.textContent = "Editor cleared. Saved plans unchanged.";
@@ -227,15 +317,23 @@ function commandsFromForm() {
     title: $("task-title").value, plannedStart, sessionPlan: draftItems(), note: $("task-note").value,
   };
   const classification = $("task-classification").value;
-  if (!editingTask) return [{ type: "create", task: {
-    id: crypto.randomUUID(), ownershipScopeId: store.localScopeId, planDayId: day, classification, ...changes,
-  } }];
+  const parentTaskId = $("task-parent").value || null;
+  if (!editingTask) {
+    const task = {
+      id: crypto.randomUUID(), ownershipScopeId: store.localScopeId, planDayId: day, classification, ...changes,
+    };
+    if (parentTaskId) task.parentTaskId = parentTaskId;
+    return [{ type: "create", task }];
+  }
   const taskId = editingTask.id;
   const commands = [];
   // Demote before moving to a full day; every command still passes domain checks.
   if (classification === "extra") commands.push({ type: "classify", taskId, classification });
   if (day !== editingTask.planDayId) commands.push({ type: "reschedule", taskId, planDayId: day, plannedStart });
   commands.push({ type: "edit", taskId, changes });
+  if ((editingTask.parentTaskId ?? null) !== parentTaskId) {
+    commands.push({ type: "parent", taskId, parentTaskId });
+  }
   if (classification === "primary") commands.push({ type: "classify", taskId, classification });
   return commands;
 }
@@ -254,6 +352,61 @@ form.addEventListener("submit", async (event) => {
   } catch (error) { fail(error); return; }
   finally { setBusy(false); }
   $("task-title").focus();
+});
+
+function unsavedSplit() {
+  clearError();
+  status.textContent = "Unsaved split work. Use Split work to create it.";
+  updateSplitTotals();
+}
+
+function splitRecordFromForm() {
+  if (!$("split-title").value.trim()) invalid($("split-title"), "Enter a title for the split work.");
+  if (!$("split-day").value || !$("split-day").validity.valid) {
+    invalid($("split-day"), "Choose a valid Plan Day for the split work.");
+  }
+  if (!$("split-start").value || !$("split-start").validity.valid) {
+    invalid($("split-start"), "Choose a planned start for the split work.");
+  }
+  if (!splitItems.children.length) {
+    invalid($("add-split-focus"), "Add at least one focus session for the split work.");
+  }
+  for (const input of splitItems.querySelectorAll("input")) {
+    if (!input.validity.valid || input.value.trim() === "" || !Number.isFinite(Number(input.value))) {
+      invalid(input, "Enter a numeric duration in minutes for each new work session.");
+    }
+  }
+  const record = {
+    id: crypto.randomUUID(),
+    ownershipScopeId: store.localScopeId,
+    planDayId: $("split-day").value,
+    classification: $("split-classification").value,
+    title: $("split-title").value,
+    plannedStart: { time: $("split-start").value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    sessionPlan: rowsDraft(splitItems),
+  };
+  if ($("split-as-subtask").checked) record.parentTaskId = editingTask.id;
+  return record;
+}
+
+splitForm.addEventListener("input", unsavedSplit);
+splitForm.addEventListener("change", unsavedSplit);
+splitForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (busy || !snapshot || !editingTask) return;
+  clearError();
+  try {
+    const record = splitRecordFromForm();
+    setBusy(true);
+    snapshot = await store.commit(store.localScopeId, snapshot.revision,
+      [{ type: "split", taskId: editingTask.id, newWork: [record] }]);
+    viewDay.value = record.planDayId;
+    renderTasks();
+    resetSplitDraft(editingTask);
+    status.textContent = "Split work created. The edited task is unchanged.";
+  } catch (error) { fail(error); return; }
+  finally { setBusy(false); }
+  $("split-title").focus();
 });
 
 async function loadPlans() {
