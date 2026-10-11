@@ -1,132 +1,104 @@
-# WS-A / V2-012 implementation checkpoint
+# WS-A / V2-012 implementation and handoff
 
-Recorded 2026-10-11 (Africa/Cairo). Status: **proposal; runtime implementation
-blocked on owner decisions**. This document does not approve new product policy
-or shared-file ownership.
+Recorded 2026-10-12 (Africa/Cairo). **Independent domain package implemented;
+persistence/browser controller/UI integration pending.**
 
-Workstream: [#29](https://github.com/m950m/space-boxes-timer/issues/29).
-Acceptance task: [#28](https://github.com/m950m/space-boxes-timer/issues/28).
-Delivery index: [#11](https://github.com/m950m/space-boxes-timer/issues/11).
-Supersedes the checkout blocker in the
-[previous handoff](https://github.com/m950m/space-boxes-timer/issues/29#issuecomment-6112617412).
+Workstream [#29](https://github.com/m950m/space-boxes-timer/issues/29), acceptance
+task [#28](https://github.com/m950m/space-boxes-timer/issues/28), delivery index
+[#11](https://github.com/m950m/space-boxes-timer/issues/11). #29's owner decision
+supersedes the unapproved recovery proposal at checkpoint
+`6b6006792656f9f8b38156d320664ee3e4824d61`.
 
-## Verified starting state and authority
+## Authority and boundaries
 
-- Checkout: `/home/mnabil/Learning/projects/Space_boxes_Codex_Focus`.
-- Branch: `feature/ws-a-focus`; expected origin: `m950m/space-boxes-timer`.
-- Starting local and verified GitHub head:
-  `5d1848e179a49825a24fc9c11c5aa8c40185dd9a`; clean working tree.
-- #29 permits owned-file implementation, tests, bounded repairs, checkpoint
-  commits, pushes to this branch and checkpoint comments on #29.
-- Focus-specific modules and tests are the authorized implementation boundary.
-  Shared-file edits, other workstream files, PR creation, merge, release and
-  branch cleanup remain outside that authorization.
-- Only this Focus checkout was accessed. No runtime code or shared files changed.
-  The published #29 comment will identify this document's verified commit SHA.
+Checkout `/home/mnabil/Learning/projects/Space_boxes_Codex_Focus`, branch
+`feature/ws-a-focus`, repository `m950m/space-boxes-timer`. Starting checkout was
+clean and matched the live GitHub checkpoint. #29 authorizes owned implementation,
+tests, review and verified checkpoint commits/pushes/comments.
 
-## Proposed implementation after policy approval
+Owner approved preserving observations/obligations, explicit continued,
+interrupted or partial-work reconciliation, non-focus pause, no input-idle
+inference, capped nonduplicate focus and retained Running/Paused authority.
+**No checkpoint frequency or discontinuity thresholds are selected by this pure
+domain package.** The previous 1-second/5-second/1-second proposal is not approved
+fixed product policy. Browser sampling requires reasoning and deterministic tests.
 
-1. Pure lifecycle/evidence helpers under this directory. Separate actual session
-   identity and its minimal frozen planning snapshot from running/paused
-   reservation authority and historical activity evidence. Preserve session,
-   task, item, scope, original Plan Day and timezone identities across midnight
-   and later planning changes. Derive confirmed focus from evidence; keep pause,
-   interruption, uncertainty and outcomes separate.
-2. A focus-specific IndexedDB adapter using the existing V2 local scope and
-   database. Serialize each reservation read/check/write and its session,
-   evidence and authority-change writes in one readwrite transaction. Validate
-   persisted planning identity when starting; reject stale control versions and
-   stale planning selections. Resolve success only after transaction completion.
-   Broadcasts refresh views and never confer authority or add focus evidence.
-3. A focus-specific controller/view. Start, Pause, Resume and End require explicit
-   actions. Only confirmed focus reaching the frozen target ends the session;
-   neither task completion nor the next session starts automatically. Running
-   and Paused both retain reservation. Observing tabs cannot independently start
-   work or infer takeover from input activity. Show storage failure, pending
-   recovery and original Plan Day attribution with labeled keyboard controls.
-4. Add focus-specific browser fixtures/tests without changing shared runners.
-   Integrate with the existing planner only after explicit shared-file ownership
-   approval and a serial handoff. Review the actual diff before each milestone.
+Do not modify `planning-store.js` until Zcode explicitly acknowledges the exclusive
+window and confirms no local unpushed or concurrent edits. Remote branch state
+cannot establish that acknowledgement. Do not modify `app.js`, `index.html`,
+other shared files or Planner-owned files. No PR, merge, deployment or deletion.
 
-## Material decision request: recovery and reconciliation
+## Implemented domain contract
 
-[#28](https://github.com/m950m/space-boxes-timer/issues/28) requires stopping when
-the exact recovery policy is unspecified. [OD-019](../../../../_docs/product/owner-decisions.md#od-019--idle-interruption-and-recovery)
-leaves continuity thresholds, known-point determination and interruption
-boundaries open. The [data model](../../../../_docs/data/v2-data-model.md#activity-evidence-and-reconciliation)
-also leaves reconciliation arithmetic unspecified. These choices determine
-recorded focus and session ending, so they require owner approval before code.
+[focus-lifecycle.js](focus-lifecycle.js) exports `createFocusState(scopeId)`,
+`validateFocusState(state)`, `transitionFocus(state, command)` and
+`getSessionActivity(state, sessionId)`. [activity-evidence.js](activity-evidence.js)
+validates evidence/decisions and derives factual activity projections.
 
-Proposed bounded policy for owner review (all values and interactions below are
-**unapproved**):
+A scope aggregate has a revision, one nullable Running/Paused reservation, actual
+sessions with detached minimal starting snapshots, activity evidence,
+reconciliation decisions and authority-change history. Only the reservation owns
+current control; evidence owns interval boundaries. This domain representation
+does not establish an IndexedDB schema, durable success or cross-tab locking.
 
-- Request a durable running checkpoint every second. A checkpoint gap greater
-  than five seconds, a wall/monotonic elapsed-time difference greater than one
-  second, or a new document recovering a Running reservation marks the interval
-  since the last committed trustworthy boundary uncertain. Do not infer loss of
-  focus from missing keyboard/mouse input. Browser throttling may cause a
-  conservative recovery prompt; these thresholds are not attention measures.
-- Preserve that interval, retain exclusive reservation, and stop automatic focus
-  credit until reconciliation. Offer explicit confirmation of continued work,
-  explicit interruption, or a partial-work duration. Leaving it unresolved keeps
-  the evidence and obligation; it never silently counts or discards time.
-- Keep original observations and append the user's decision with provenance.
-  Count each explicitly reconciled interruption episode once, rather than each
-  storage fragment. Never convert an explicit pause into active focus.
-- Credit confirmed work only up to the remaining configured active duration.
-  Preserve any remaining uncertain evidence separately; never count it toward
-  another session. Where clock changes prevent a trustworthy elapsed duration,
-  ask for the elapsed/active durations and retain the uncertain original clock
-  boundaries rather than inventing an exact ending instant.
-- Recover a Paused reservation as Paused with no focus credit. A recovered or
-  different controlling context must explicitly confirm control transfer;
-  record the transfer and invalidate the old control version. Do not create a
-  second session or release reservation on tab disappearance.
+Every command requires unique `id`, `type`, `contextId`, finite observed `at` in
+milliseconds and `expectedRevision`. The accepted controller performs active
+control actions. Caller state/intent are cloned, not mutated. Returning a draft
+requires the adapter to serialize authoritative load/check/write before success.
 
-Owner may approve this bounded policy or supply replacement rules. Approval must
-be recorded on #29 (or a linked authoritative decision); this proposal alone is
-not an accepted implementation specification.
+| Command | Additional input and behavior |
+| --- | --- |
+| `start` | Explicit `sessionId`, `task`, current `plannedItemId`, `timezone`, new `evidenceId`. Captures original identity/title/classification/Plan Day/timezone/planned start/target and optional parent reference; excludes notes/resources/full plan. |
+| `record` | Closes an observed interval and opens the next with a new `evidenceId`; confirmed active target ends the session. |
+| `pause`, `resume` | Close current evidence and open pause/focus evidence under the same reservation; pause never adds focus and has no duration cap. |
+| `end` | Closes evidence and releases reservation; preserves actual early duration, recorded outcome/ending and unresolved obligations. |
+| `transfer` | Requires `confirmed: true` and new `evidenceId`; preserves session/mode, invalidates old controller, marks running recovery interval uncertain. |
+| `reconcile` | Closed `evidenceId`, `elapsedMs`, ordered `parts` explicitly accounting for all duration. Preserves originals and appends decision provenance. |
 
-## Shared-file request and integration order
+Control interval commands require `observation: { at, elapsedMs, certainty }`
+ending at command `at`. Certainty is `confirmed` or `uncertain`; running
+uncertainty requires nonblank `reason`. `elapsedMs` is reliable measured duration
+or `null` when unknown. Confirmed focus needs reliable duration and ordered
+boundaries. Wall-clock differences alone do not prove focus; the browser adapter
+must establish or deny continuity.
 
-`../persistence/planning-store.js` opens database version 1 and validates an exact
-three-store schema. Adding focus stores independently would make the current
-planner reject the schema or fail its versioned open. A second disconnected
-focus database would not provide the proposed atomic planning/authority boundary.
+Reconciled parts use `{ kind: "focus", elapsedMs }` or
+`{ kind: "interruption", elapsedMs, episodeId }`. Explicit episode IDs group
+fragments without automatic interruption/arbitration rules. Unknown explicit
+pause duration accepts only `pause` parts. Reliable duration cannot be replaced.
+Parts account for the whole interval with relative machine-rounding tolerance;
+duplicate decisions reject. Unknown duration requires explicit user input.
 
-Request an explicit serial ownership window for WS-A to modify
-`v2/frontend/js/persistence/planning-store.js`: a compatible V2 database upgrade,
-shared open/schema handling and planning/focus transaction access. Preserve the
-existing planning API, records and visible error behavior. No migration deletes
-planning or V1 data. Coordinate any WS-B dependency before assigning the window.
+Projections credit in original evidence order, cap focus at the frozen target,
+retain excess as `uncreditedFocusMs`, and separate pause, interruption and known/
+unknown unresolved durations. Open evidence adds no credit. Completion preserves
+an evidence-relative offset; exact absolute time is `null` if reliable clock/
+duration mapping is unavailable. No task mutation or next-session auto-start.
 
-After the engine checkpoint and WS-B's UI handoff, request exclusive WS-A access
-to `v2/frontend/js/app.js` and `v2/frontend/index.html` for bounded focus mounting.
-Prefer a new focus-specific stylesheet; no ownership of `planner.css`, existing
-browser runners, Django routes/tests or README is requested. No shared file has
-an approved WS-A writer yet; requests here do not transfer ownership.
+Later decisions may correct `effectiveOutcome`/`endingPoint` while retaining the
+original recorded ending. Completion during reconciliation retains an unobserved
+running tail as uncertainty or unknown pause tail as pause. Reconciling old
+history leaves a later reservation and its control references untouched.
 
-## Validation and exact resume action
+## Verification and exact next action
 
-Executed at the starting SHA: repository/branch/status/origin preflight and live
-GitHub comparison confirming that the checkpoint equals the remote branch.
-This checkpoint is documentation only. Reviewed the complete new-file diff
-against #28 and approved policy/ownership; checked local link targets and their
-section anchors. Check staged whitespace and scope before commit. No runtime
-tests have run and no #28 acceptance criterion is claimed implemented or
-QA-passing. An optional inline Python link checker was blocked by lean-ctx;
-manual link review and shell file-existence checks supplied the document check.
+Run `python3 v2/frontend/tests/run-focus-domain-tests.py`. The Focus-owned fixture
+runs in installed Chrome using Python stdlib and an ephemeral origin/profile,
+alongside six unchanged planning regression suites. No installs are required.
+The published #29 checkpoint records results and tested revision. JSON round-trip
+tests prove domain rehydration, **not disk persistence, browser-restart authority
+or two-tab transaction serialization**.
 
-Required after implementation: real-Chrome Start/Pause/Resume/End, active versus
-paused accounting, active-duration completion, reload/browser restart, two-tab
-races/exclusivity, stale transitions, transaction/storage failures, uncertain
-recovery/reconciliation, explicit control recovery, no auto-start/task completion,
-V1 isolation, frozen planning identity and midnight attribution. Run relevant
-existing planning/persistence regressions after approved integration changes.
+Actual diff review covered accepted criteria, data-model integrity and ownership.
+Repairs addressed unknown-pause reconciliation, historical control references,
+relative duration rounding and absolute completion-time trust. A boundary-test
+helper was corrected after the initial run. No shared files were modified.
 
-Exact next action: read #29's latest handoff and owner decisions; verify this
-checkpoint's remote SHA and current checkout scope. Once recovery policy is
-approved, implement the pure focus lifecycle/evidence boundary and focus-specific
-tests. Implement the shared database adapter and planner mount only during their
-separately approved serial ownership windows. Preserve the existing commit/push
-authority; obtain separate release authorization before creating a PR.
+Next: obtain Zcode's explicit persistence-window acknowledgement, then integrate
+compatible IndexedDB upgrade/open/schema and atomic planning/focus transitions
+while preserving planner API, records, visible failures and V1 data. Choose and
+justify browser sampling at that stage; test throttling/restart/clock cases,
+transactions, two tabs and storage failures plus existing persistence regressions.
+Publish API/schema, verified SHA and end-of-window handoff on #29 before returning
+ownership. Planner mounting remains separately gated; #28 is not fully delivered
+or overall QA-passing at this independent-package checkpoint.

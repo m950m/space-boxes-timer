@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Focus domain and planning regression tests</title>
+<body><pre id="results">Running…</pre>
+<script type="module">
+  const checks = [];
+  const log = console.log.bind(console);
+  console.log = (...args) => { checks.push(args.join(" ")); log(...args); };
+  let error = null;
+  try {
+    for (const suite of ["focus-domain", "task-classification", "task-planning", "session-plan",
+      "task-history", "task-hierarchy", "task-resources"]) {
+      await import(`./${suite}.test.js`);
+    }
+  } catch (caught) { error = caught.stack ?? String(caught); }
+  document.getElementById("results").textContent = checks.join("\n") + (error ? `\nFAIL ${error}` : "\nPASS");
+  await fetch("/results", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checks, error }) });
+</script>
+</body>
+</html>
