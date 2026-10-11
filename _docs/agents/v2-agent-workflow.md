@@ -44,6 +44,27 @@ The ambiguity boundary is the effect of the choice:
 
 Use GitHub Issues or equivalent durable task records for the goal, accepted scope/criteria, grooming decisions, blockers, relevant document/ADR links and implementation/PR result. Update records only within authorization. Chats are working context, not permanent project memory; important decisions belong in committed documentation, Issues or ADRs.
 
+### Agent handoff protocol
+
+For v2 workstream handoffs, GitHub Issues, pushed commits and approved repository specifications are the durable source of truth. Any coding agent can resume without earlier conversations; no particular model, chat application or tool is required. Use [#11](https://github.com/m950m/space-boxes-timer/issues/11) as the delivery index, [#29](https://github.com/m950m/space-boxes-timer/issues/29) for Focus Engine and [#30](https://github.com/m950m/space-boxes-timer/issues/30) for Planner Experience. Track acceptance-level work in the current child Issue; a tracker or checkpoint does not authorize execution.
+
+**Checkpoint:** Prepare a concise [handoff record](handoff-template.md) at a reviewed milestone, before transferring the task or ending a session with unfinished work, and when a blocker changes the next action. Link approved specifications and decisions rather than copying them or relying on chat history. Report validation using section 5's evidence distinctions.
+
+- Distinguish uncommitted edits, local commits and the last verified remote checkpoint. A local-only commit remains in the local repository; it is not a checkpoint available on GitHub. Record full commit SHAs and the actual state tested, including any uncommitted edits.
+- For changed files, commit/push scoped work only when separately authorized under section 7, then verify the branch and exact SHA on GitHub. With explicit Issue-update authority, publish the handoff as a comment on the current Issue, linking the verified remote commit and any existing PR; link the comment from the workstream tracker when authorized. Identify the checkpoint's date and the record it supersedes. An Issue comment alone does not make local code available remotely.
+- If commit, push or Issue-update authority is absent, leave a local handoff draft and report the unpublished state and last verified remote checkpoint (or none). Do not describe local-only work as transferred. Checkpoint publication is a remote mutation, not an exception to the gates in section 7; it grants no PR, merge, deployment or branch-deletion authority.
+
+**Resume:**
+
+1. Read the parent index, assigned workstream and current Issue, including comments, accepted criteria, approvals, blockers and dependencies. Find the latest published handoff for that Issue and its linked remote commit/PR; use current GitHub state, not a cached local remote-tracking ref or an old chat summary.
+2. Read `AGENTS.md`, this workflow and only task-relevant approved specifications from section 1. A checkpoint records progress, not new product or architecture policy. Resolve conflicts or missing material decisions through the existing human gates.
+3. Verify the checkpoint SHA exists on GitHub and inspect any later remote changes or merge state. Confirm the expected authorized task branch/checkout with section 1's pre-flight and compare its actual state with the checkpoint. Preserve local-only work. Stop on repository/branch mismatch, unexplained divergence or inseparable overlapping changes; do not silently switch, reset or discard work.
+4. Confirm current execution authority and file ownership, then take the recorded exact next action only within accepted scope. Treat prior tests as historical evidence for their recorded revision; revalidate as section 5 requires. If no usable checkpoint exists, reconstruct status from remote code, Issues and approved specifications, explicitly report gaps and obtain any missing material decision or authorization before dependent writes.
+
+**Isolation and shared-file ownership:** An isolated Git Worktree gives each authorized workstream its own checkout directory, working files and task branch while sharing repository history. Use separate worktrees for concurrent workstreams as required by their trackers; creating or changing branches/worktrees still requires applicable authorization. Work only in the assigned checkout and do not modify another workstream's worktree.
+
+Worktrees isolate local edits, but changes to the same repository file can still conflict during integration. Record one approved writer per shared file, required interfaces, dependency Issues and the order of integration in the handoff. Use the workstream trackers for current boundaries rather than treating proposals as approved ownership. Changes to shared UI entrypoints, persistence, test runners or other shared files require the owner-approved serialized integration or scope reassignment recorded there. Transfer ownership explicitly before another writer starts; isolated branches do not permit concurrent ownership. Integrate through the existing QA/PR/human-merge flow, without bypassing section 7.
+
 ## 3. Flow, planning and focused sessions
 
 Issue/task
