@@ -49,7 +49,7 @@ function setBusy(value) {
 
 function clearError() {
   errorBox.textContent = "";
-  for (const input of form.querySelectorAll("[aria-invalid]")) input.removeAttribute("aria-invalid");
+  for (const input of document.querySelectorAll("[aria-invalid]")) input.removeAttribute("aria-invalid");
 }
 
 function fail(error) {
@@ -256,16 +256,22 @@ function addResourceRow(resource = {}) {
   url.id = `resource-url-${crypto.randomUUID()}`;
   url.value = resource.url ?? "";
   url.placeholder = "https://example.com/page";
-  url.setAttribute("aria-label", "Resource web address (required)");
-  const label = element("input", undefined, "resource-label");
-  label.type = "text";
-  label.id = `resource-label-${crypto.randomUUID()}`;
-  label.value = resource.label ?? "";
-  label.placeholder = "Label (optional)";
-  label.setAttribute("aria-label", "Resource label (optional)");
+  const urlLabel = element("label");
+  urlLabel.htmlFor = url.id;
+  const urlField = element("div", undefined, "resource-field");
+  urlField.append(urlLabel, url);
+  const text = element("input", undefined, "resource-label");
+  text.type = "text";
+  text.id = `resource-label-${crypto.randomUUID()}`;
+  text.value = resource.label ?? "";
+  text.placeholder = "Label (optional)";
+  const textLabel = element("label");
+  textLabel.htmlFor = text.id;
+  const textField = element("div", undefined, "resource-field");
+  textField.append(textLabel, text);
   const remove = element("button", "Remove");
   remove.type = "button";
-  row.append(url, label, remove);
+  row.append(urlField, textField, remove);
   resourceList.append(row);
   labelResourceRows();
   return url;
@@ -273,6 +279,9 @@ function addResourceRow(resource = {}) {
 
 function labelResourceRows() {
   [...resourceList.children].forEach((row, index) => {
+    const [urlLabel, textLabel] = row.querySelectorAll("label");
+    urlLabel.textContent = `Resource ${index + 1} URL (required)`;
+    textLabel.textContent = `Resource ${index + 1} label (optional)`;
     row.querySelector("button").setAttribute("aria-label", `Remove resource link ${index + 1}`);
   });
 }
@@ -392,6 +401,9 @@ function renderTasks() {
         card.append(links);
       }
       if (task.note) card.append(element("p", task.note, "note"));
+      if (task.completedAt && task.cancelledAt) {
+        card.append(element("p", "Task has both completed and cancelled records.", "decision-conflict"));
+      }
       if (task.completedAt) card.append(element("p", "Marked complete"));
       if (task.cancelledAt) card.append(element("p", "Cancelled"));
       const edit = element("button", "Edit task");
@@ -403,12 +415,18 @@ function renderTasks() {
         $("task-title").focus();
       });
       card.append(edit);
+      const decisionMade = Boolean(task.completedAt || task.cancelledAt);
       for (const [type, field, text] of [["complete", "completedAt", "Mark complete"], ["cancel", "cancelledAt", "Cancel task"]]) {
         const button = element("button", text);
         button.type = "button";
-        button.dataset.decided = String(Boolean(task[field]));
-        button.disabled = Boolean(task[field]);
-        button.setAttribute("aria-label", `${text}: ${task.title}`);
+        // One current decision per task; earlier decisions and history are never erased.
+        button.dataset.decided = String(decisionMade);
+        button.disabled = decisionMade;
+        button.setAttribute("aria-label", !decisionMade
+          ? `${text}: ${task.title}`
+          : Boolean(task[field])
+            ? `Task already ${field === "completedAt" ? "marked complete" : "cancelled"}`
+            : `${text} unavailable: task was ${task.completedAt ? "completed" : "cancelled"}`);
         button.addEventListener("click", () => decideTask(task.id, type));
         card.append(button);
       }
@@ -417,15 +435,20 @@ function renderTasks() {
   }
   const dayTasks = snapshot.tasks.filter((task) => task.planDayId === viewDay.value);
   const primaryCount = dayTasks.filter((task) => task.classification === "primary").length;
-  const plannedMinutes = dayTasks.reduce((sum, task) => sum + getTaskPlanningTotals(task).plannedFocusMinutes, 0);
+  // Cancelled plans are not actionable; completed tasks keep their planned minutes.
+  const plannedMinutes = dayTasks
+    .filter((task) => !task.cancelledAt)
+    .reduce((sum, task) => sum + getTaskPlanningTotals(task).plannedFocusMinutes, 0);
   $("day-summary").textContent = dayTasks.length
-    ? `${primaryCount} of up to 3 Primary · ${dayTasks.length - primaryCount} Extra · ${plannedMinutes} minutes planned focus`
+    ? `${primaryCount} of up to 3 Primary · ${dayTasks.length - primaryCount} Extra · ${plannedMinutes} minutes planned focus (completed included, cancelled excluded)`
     : "No tasks planned for this day yet.";
 }
 
 // Explicit lifecycle decisions only; no session outcome ever completes a task.
 async function decideTask(taskId, type) {
   if (busy || !snapshot) return;
+  const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
+  if (task && (task.completedAt || task.cancelledAt)) return;
   clearError();
   try {
     setBusy(true);

@@ -430,13 +430,17 @@ def suite(client, url):
     print("PASS split creates separately planned work without changing the source", flush=True)
     check(client, "document.activeElement.id === 'split-title'", "completed split returns focus to the split editor")
     click(client, "#split-task")
-    check(client, "document.querySelector('#planner-error').textContent.includes('title') && document.activeElement.id === 'split-title'",
-          "empty split title is rejected with focus on the field")
+    check(client, "document.querySelector('#planner-error').textContent.includes('title') && document.activeElement.id === 'split-title' && document.querySelector('#split-title').getAttribute('aria-invalid') === 'true'",
+          "empty split title is rejected, focused and flagged")
+    # QA D2: clearing the editor also clears stale invalid flags on split fields.
+    click(client, "#cancel-edit")
+    check(client, "!document.querySelector('[aria-invalid]') && document.querySelector('#split-fields').disabled === true",
+          "clearing the editor clears flagged split fields")
+    click(client, "#extra-tasks article button")
     client.evaluate("document.querySelector('#split-as-subtask').focus()")
     key(client, "Tab", 9)
     check(client, "document.activeElement.id === 'split-task' && getComputedStyle(document.activeElement).outlineStyle !== 'none'",
           "split action is keyboard reachable with visible focus")
-    click(client, "#extra-tasks article button")
     fill(client, "#split-title", "Split elsewhere")
     fill(client, "#split-day", "2026-10-21")
     fill(client, "#split-start", "08:00")
@@ -445,6 +449,8 @@ def suite(client, url):
     wait(client, "document.querySelector('#v2-startup-status').textContent === 'Split work created. The edited task is unchanged.'")
     check(client, "document.querySelector('#view-day').value === '2026-10-21' && document.querySelectorAll('#extra-tasks article').length === 1",
           "splitting to another day shows the new work there")
+    check(client, "!document.querySelector('[aria-invalid]')",
+          "successful correction clears stale invalid flags")
     navigate(client, url)
     fill(client, "#view-day", "2026-10-20")
     check(client, "document.querySelectorAll('#extra-tasks article').length === 3 && [...document.querySelectorAll('#extra-tasks article')].filter(a => a.textContent.includes('Subtask of: Hierarchy parent')).length === 1",
@@ -516,22 +522,32 @@ def suite(client, url):
     fill(client, "#resource-list .resource-row:nth-child(1) .resource-label", "Reading list")
     click(client, "#add-resource")
     fill(client, "#resource-list .resource-row:nth-child(2) .resource-url", "notes:some-thing")
+    click(client, "#add-resource")
+    fill(client, "#resource-list .resource-row:nth-child(3) .resource-url", "JAVASCRIPT:alert(2)")
+    click(client, "#add-resource")
+    fill(client, "#resource-list .resource-row:nth-child(4) .resource-url", "data:text/html,Managed text")
+    check(client, "document.querySelector('#resource-list .resource-row:nth-child(1) label').textContent === 'Resource 1 URL (required)' && document.querySelector('#resource-list .resource-row:nth-child(2) label').textContent === 'Resource 2 URL (required)' && document.querySelectorAll('#resource-list .resource-row:nth-child(4) label')[1].textContent === 'Resource 4 label (optional)'",
+          "resource rows carry indexed visible labels")
+    check(client, "document.querySelector('#resource-list .resource-url').labels.length === 1 && getComputedStyle(document.querySelector('#resource-list .resource-url').labels[0]).display !== 'none' && document.querySelector('#resource-list .resource-label').labels.length === 1",
+          "resource inputs are programmatically tied to visible labels")
     save(client)
-    check(client, "document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article a').textContent === 'Reading list' && document.querySelector('article a').rel.includes('noopener')",
+    check(client, "document.querySelectorAll('article a').length === 1 && document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article a').textContent === 'Reading list' && document.querySelector('article a').rel.includes('noopener')",
           "labeled web resources render as safe direct-open links")
-    check(client, "!document.querySelector('article a').href.startsWith('notes:') && document.querySelector('article').textContent.includes('notes:some-thing') && document.querySelector('article').textContent.includes('not a web link')",
-          "non-web resource text stays visible without an executable link")
+    check(client, "![...document.querySelectorAll('article a')].some(a => a.href.startsWith('javascript:') || a.href.startsWith('data:') || a.getAttribute('href').toLowerCase().startsWith('javascript:'))",
+          "unsafe URL schemes never become anchors")
+    check(client, "document.querySelector('article').textContent.includes('notes:some-thing') && document.querySelector('article').textContent.includes('JAVASCRIPT:alert(2)') && document.querySelector('article').textContent.includes('data:text/html,Managed text') && [...document.querySelectorAll('article .resource-links span')].length === 3",
+          "non-web resource text stays visible and inert")
     click(client, "article button")
     click(client, "#add-resource")
-    fill(client, "#resource-list .resource-row:nth-child(3) .resource-url", "   ")
+    fill(client, "#resource-list .resource-row:nth-child(5) .resource-url", "   ")
     save(client, False)
     check(client, "document.querySelector('#planner-error').textContent.includes('web address')",
           "empty resource URL is rejected")
-    click(client, "#resource-list .resource-row:nth-child(3) button")
+    click(client, "#resource-list .resource-row:nth-child(5) button")
     save(client)
     scope = stored(client)["tasks"]
     resource_task = next(task for task in scope if task["title"] == "Resource task")
-    assert [r["url"] for r in resource_task["resources"]] == ["https://example.com/reading", "notes:some-thing"]
+    assert [r["url"] for r in resource_task["resources"]] == ["https://example.com/reading", "notes:some-thing", "JAVASCRIPT:alert(2)", "data:text/html,Managed text"]
     assert resource_task["resources"][0]["label"] == "Reading list"
     print("PASS resource rows round-trip through the editor", flush=True)
     client.evaluate("document.querySelector('article a').focus()")
@@ -545,17 +561,69 @@ def suite(client, url):
     completed = next(task for task in scope if task["title"] == "Resource task")
     assert completed.get("completedAt")
     print("PASS explicit completion records a decision time", flush=True)
-    click(client, "article button:nth-of-type(3)")
+    # QA D1: current decisions are mutually exclusive; no decision is erased.
+    check(client, "document.querySelector('article button:nth-of-type(3)').disabled === true && document.querySelector('article button:nth-of-type(3)').getAttribute('aria-label') === 'Cancel task unavailable: task was completed'",
+          "completion disables cancellation with an explanatory label")
+    client.evaluate("document.querySelector('article button:nth-of-type(3)').click()")
+    check(client, "!document.querySelector('article').textContent.includes('Cancelled')",
+          "a blocked cancellation records nothing")
+    assert not (next(task for task in stored(client)["tasks"] if task["title"] == "Resource task")).get("cancelledAt")
+    print("PASS mutual exclusion blocks a second current decision", flush=True)
+    fill(client, "#task-title", "Cancelled first")
+    fill(client, "#task-day", "2026-10-23")
+    fill(client, "#task-start", "10:00")
+    fill(client, "#focus-items input", "25")
+    save(client)
+    click(client, "#extra-tasks article:nth-of-type(2) button:nth-of-type(3)")
     wait(client, "document.querySelector('#v2-startup-status').textContent === 'Task cancelled. Planning records are kept.'")
-    check(client, "document.querySelector('article').textContent.includes('Cancelled') && document.querySelector('article button:nth-of-type(3)').disabled === true",
-          "explicit cancellation shows state and disables its control")
-    decided = next(task for task in stored(client)["tasks"] if task["title"] == "Resource task")
-    assert decided.get("cancelledAt") and decided.get("completedAt")
-    print("PASS cancellation retains the record and earlier completion", flush=True)
+    check(client, "[...document.querySelectorAll('#extra-tasks article')][1].textContent.includes('Cancelled') && [...document.querySelectorAll('#extra-tasks article')][1].querySelector('button:nth-of-type(2)').disabled === true && [...document.querySelectorAll('#extra-tasks article')][1].querySelector('button:nth-of-type(2)').getAttribute('aria-label') === 'Mark complete unavailable: task was cancelled'",
+          "explicit cancellation shows state and disables completion")
+    cancelled = next(task for task in stored(client)["tasks"] if task["title"] == "Cancelled first")
+    assert cancelled.get("cancelledAt") and not cancelled.get("completedAt")
+    print("PASS cancellation excludes a later completion", flush=True)
     navigate(client, url)
     fill(client, "#view-day", "2026-10-23")
-    check(client, "document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article').textContent.includes('Marked complete') && document.querySelector('article').textContent.includes('Cancelled')",
-          "resource links and lifecycle states persist through reload")
+    check(client, "document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article').textContent.includes('Marked complete') && !document.querySelector('article').textContent.includes('Cancelled')",
+          "completion persists; the blocked cancellation recorded nothing")
+    # QA D1: persisted dual decisions (direct store writes) are surfaced, never masked.
+    client.evaluate("""(async () => {
+      const store = await (await import('/js/app.js')).planningStore;
+      const current = await store.load();
+      await store.commit(store.localScopeId, current.revision, [{ type: 'create', task: {
+        id: 'both-decided', ownershipScopeId: store.localScopeId, planDayId: '2026-10-24',
+        title: 'Both decided', plannedStart: { time: '08:00', timezone: 'Africa/Cairo' },
+        classification: 'extra', sessionPlan: [{ id: 'both-a', activeMinutes: 25 }],
+        completedAt: '2026-10-11T10:00:00.000Z' } }]);
+      const again = await store.load();
+      await store.commit(store.localScopeId, again.revision, [{ type: 'cancel', taskId: 'both-decided', decidedAt: '2026-10-11T11:00:00.000Z' }]);
+    })()""")
+    navigate(client, url)
+    fill(client, "#view-day", "2026-10-24")
+    check(client, "document.querySelector('article').textContent.includes('both completed and cancelled') && document.querySelector('article button:nth-of-type(2)').disabled === true && document.querySelector('article button:nth-of-type(3)').disabled === true && document.querySelector('article button:nth-of-type(2)').getAttribute('aria-label') === 'Task already marked complete'",
+          "persisted dual decisions stay visible and accept no new decisions")
+    both = next(task for task in stored(client)["tasks"] if task["id"] == "both-decided")
+    assert both.get("completedAt") and both.get("cancelledAt")
+    print("PASS persisted dual decision records stay visible, not masked", flush=True)
+    # QA D4: the day summary counts actionable planned focus and documents its scope.
+    fill(client, "#task-title", "Summary one")
+    fill(client, "#task-day", "2026-10-25")
+    fill(client, "#task-start", "09:00")
+    fill(client, "#focus-items input", "25")
+    save(client)
+    fill(client, "#task-title", "Summary two")
+    fill(client, "#task-start", "10:00")
+    fill(client, "#focus-items input", "40")
+    save(client)
+    check(client, "document.querySelector('#day-summary').textContent.includes('65 minutes planned focus (completed included, cancelled excluded)')",
+          "day summary totals all planned focus with its scope documented")
+    click(client, "#extra-tasks article:nth-of-type(2) button:nth-of-type(3)")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Task cancelled. Planning records are kept.'")
+    check(client, "document.querySelector('#day-summary').textContent.includes('25 minutes planned focus (completed included, cancelled excluded)')",
+          "cancelled plans leave the actionable total")
+    click(client, "#extra-tasks article:nth-of-type(1) button:nth-of-type(2)")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Task marked complete. Planning records are kept.'")
+    check(client, "document.querySelector('#day-summary').textContent.includes('25 minutes planned focus (completed included, cancelled excluded)')",
+          "completed plans remain in the documented total")
     # WS-B4: day summary, Primary distinction, keyboard flow, small screens.
     check(client, "!document.querySelector('article').classList.contains('primary-card')",
           "Extra tasks do not carry the Primary marker")
@@ -565,7 +633,7 @@ def suite(client, url):
     fill(client, "#task-classification", "primary")
     fill(client, "#focus-items input", "25")
     save(client)
-    check(client, "document.querySelector('#primary-tasks article').classList.contains('primary-card') && document.querySelector('#day-summary').textContent.startsWith('1 of up to 3 Primary') && document.querySelector('#day-summary').textContent.includes('1 Extra')",
+    check(client, "document.querySelector('#primary-tasks article').classList.contains('primary-card') && document.querySelector('#day-summary').textContent.startsWith('1 of up to 3 Primary') && document.querySelector('#day-summary').textContent.includes('2 Extra')",
           "Primary tasks carry the marker and the day summary distinguishes both classifications")
     client.evaluate("document.querySelector('#add-resource').focus()")
     key(client, "Tab", 9)

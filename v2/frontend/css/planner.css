@@ -30,8 +30,10 @@ button[type=submit] { background: #174a8b; color: white; }
 .break-row input { width: 8rem; }
 .break-row select { width: auto; flex: 1; min-width: 12rem; }
 #break-list { padding-block: .25rem; }
-.resource-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; border-bottom: 1px solid #b4bdcb; padding-block: .25rem; }
-.resource-row input { width: auto; flex: 1; min-width: 10rem; }
+.resource-row { display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: end; border-bottom: 1px solid #b4bdcb; padding-block: .25rem; }
+.resource-field { flex: 1; min-width: 10rem; }
+.resource-field label { margin-top: 0; }
+.decision-conflict { color: #8b1622; font-weight: 600; }
 .resource-links { margin-block: .5rem; padding-left: 1.5rem; }
 .resource-links a { color: #174a8b; }
 .resource-links span { color: #67758a; }
@@ -39,7 +41,7 @@ article:focus-visible, article:focus { outline: 3px solid #174a8b; outline-offse
 .primary-card { border-left: 4px solid #174a8b; }
 #day-summary { font-weight: 600; }
 @media (max-width: 45rem) {
-  .break-row input, .break-row select, .resource-row input { width: 100%; flex-basis: 100%; }
+  .break-row input, .break-row select { width: 100%; flex-basis: 100%; }
   .break-row select { min-width: 0; }
-  .resource-row input { min-width: 0; }
+  .resource-field { flex-basis: 100%; min-width: 0; }
 }
