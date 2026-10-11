@@ -506,6 +506,56 @@ def suite(client, url):
     click(client, "#cancel-edit")
     check(client, "document.querySelectorAll('#break-list .break-row').length === 0 && document.querySelector('#add-break').disabled === true",
           "cancel returns the editor to an empty unsaved task without breaks")
+    # WS-B3: labeled web resources open safely; lifecycle decisions are explicit.
+    fill(client, "#task-title", "Resource task")
+    fill(client, "#task-day", "2026-10-23")
+    fill(client, "#task-start", "09:00")
+    fill(client, "#focus-items input", "25")
+    click(client, "#add-resource")
+    fill(client, "#resource-list .resource-row:nth-child(1) .resource-url", "https://example.com/reading")
+    fill(client, "#resource-list .resource-row:nth-child(1) .resource-label", "Reading list")
+    click(client, "#add-resource")
+    fill(client, "#resource-list .resource-row:nth-child(2) .resource-url", "notes:some-thing")
+    save(client)
+    check(client, "document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article a').textContent === 'Reading list' && document.querySelector('article a').rel.includes('noopener')",
+          "labeled web resources render as safe direct-open links")
+    check(client, "!document.querySelector('article a').href.startsWith('notes:') && document.querySelector('article').textContent.includes('notes:some-thing') && document.querySelector('article').textContent.includes('not a web link')",
+          "non-web resource text stays visible without an executable link")
+    click(client, "article button")
+    click(client, "#add-resource")
+    fill(client, "#resource-list .resource-row:nth-child(3) .resource-url", "   ")
+    save(client, False)
+    check(client, "document.querySelector('#planner-error').textContent.includes('web address')",
+          "empty resource URL is rejected")
+    click(client, "#resource-list .resource-row:nth-child(3) button")
+    save(client)
+    scope = stored(client)["tasks"]
+    resource_task = next(task for task in scope if task["title"] == "Resource task")
+    assert [r["url"] for r in resource_task["resources"]] == ["https://example.com/reading", "notes:some-thing"]
+    assert resource_task["resources"][0]["label"] == "Reading list"
+    print("PASS resource rows round-trip through the editor", flush=True)
+    client.evaluate("document.querySelector('article a').focus()")
+    check(client, "document.activeElement.tagName === 'A' && getComputedStyle(document.activeElement).outlineStyle !== 'none'",
+          "resource links are keyboard reachable with visible focus")
+    click(client, "article button:nth-of-type(2)")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Task marked complete. Planning records are kept.'")
+    check(client, "document.querySelector('article').textContent.includes('Marked complete') && document.querySelector('article button:nth-of-type(2)').disabled === true",
+          "explicit completion shows state and disables its control")
+    scope = stored(client)["tasks"]
+    completed = next(task for task in scope if task["title"] == "Resource task")
+    assert completed.get("completedAt")
+    print("PASS explicit completion records a decision time", flush=True)
+    click(client, "article button:nth-of-type(3)")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Task cancelled. Planning records are kept.'")
+    check(client, "document.querySelector('article').textContent.includes('Cancelled') && document.querySelector('article button:nth-of-type(3)').disabled === true",
+          "explicit cancellation shows state and disables its control")
+    decided = next(task for task in stored(client)["tasks"] if task["title"] == "Resource task")
+    assert decided.get("cancelledAt") and decided.get("completedAt")
+    print("PASS cancellation retains the record and earlier completion", flush=True)
+    navigate(client, url)
+    fill(client, "#view-day", "2026-10-23")
+    check(client, "document.querySelector('article a')?.getAttribute('href') === 'https://example.com/reading' && document.querySelector('article').textContent.includes('Marked complete') && document.querySelector('article').textContent.includes('Cancelled')",
+          "resource links and lifecycle states persist through reload")
     client.call("Emulation.setDeviceMetricsOverride", width=375, height=812, deviceScaleFactor=1, mobile=True)
     check(client, "document.documentElement.scrollWidth <= innerWidth", "planner fits a narrow viewport")
     assert not client.errors, client.errors

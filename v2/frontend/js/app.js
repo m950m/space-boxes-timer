@@ -9,6 +9,7 @@ const splitForm = $("split-form");
 const splitFields = $("split-fields");
 const splitItems = $("split-items");
 const breakList = $("break-list");
+const resourceList = $("resource-list");
 const status = $("v2-startup-status");
 const errorBox = $("planner-error");
 const viewDay = $("view-day");
@@ -41,7 +42,9 @@ function setBusy(value) {
   viewDay.disabled = value || !snapshot;
   $("reload-plans").disabled = value || !store;
   $("task-list").setAttribute("aria-busy", String(value));
-  for (const button of $("task-list").querySelectorAll("button")) button.disabled = value;
+  for (const button of $("task-list").querySelectorAll("button")) {
+    button.disabled = value || button.dataset.decided === "true";
+  }
 }
 
 function clearError() {
@@ -235,6 +238,54 @@ function draftBreaks() {
   });
 }
 
+// Only web URLs open directly; every other stored value stays inert text.
+function safeResourceUrl(resource) {
+  try {
+    const parsed = new URL(resource.url);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function addResourceRow(resource = {}) {
+  const row = element("div", undefined, "resource-row");
+  const url = element("input", undefined, "resource-url");
+  url.type = "text";
+  url.required = true;
+  url.id = `resource-url-${crypto.randomUUID()}`;
+  url.value = resource.url ?? "";
+  url.placeholder = "https://example.com/page";
+  url.setAttribute("aria-label", "Resource web address (required)");
+  const label = element("input", undefined, "resource-label");
+  label.type = "text";
+  label.id = `resource-label-${crypto.randomUUID()}`;
+  label.value = resource.label ?? "";
+  label.placeholder = "Label (optional)";
+  label.setAttribute("aria-label", "Resource label (optional)");
+  const remove = element("button", "Remove");
+  remove.type = "button";
+  row.append(url, label, remove);
+  resourceList.append(row);
+  labelResourceRows();
+  return url;
+}
+
+function labelResourceRows() {
+  [...resourceList.children].forEach((row, index) => {
+    row.querySelector("button").setAttribute("aria-label", `Remove resource link ${index + 1}`);
+  });
+}
+
+function draftResources() {
+  return [...resourceList.children].map((row) => {
+    const resource = { url: row.querySelector(".resource-url").value.trim() };
+    const label = row.querySelector(".resource-label").value.trim();
+    if (label) resource.label = label;
+    return resource;
+  });
+}
+
 function resetEditor(task) {
   editingTask = task;
   form.reset();
@@ -251,6 +302,8 @@ function resetEditor(task) {
   items.replaceChildren();
   for (const item of task?.sessionPlan ?? [{ id: crypto.randomUUID() }]) addItem(item);
   for (const plannedBreak of task?.plannedBreaks ?? []) addBreakRow(plannedBreak);
+  resourceList.replaceChildren();
+  for (const resource of task?.resources ?? []) addResourceRow(resource);
   resetSplitDraft(task);
 }
 
@@ -302,6 +355,7 @@ function renderTasks() {
     for (const task of tasks) {
       const card = element("article");
       card.dataset.taskId = task.id;
+      card.tabIndex = -1;
       const totals = getTaskPlanningTotals(task);
       const start = task.plannedStart?.time ?? task.plannedStart;
       const zone = task.plannedStart?.timezone;
@@ -316,6 +370,26 @@ function renderTasks() {
       if (task.plannedBreaks?.length) {
         card.append(element("p", `Planned breaks: ${task.plannedBreaks.map((plannedBreak) => plannedBreak.breakMinutes).join(" → ")} minutes`));
       }
+      if (task.resources?.length) {
+        const links = element("ul", undefined, "resource-links");
+        for (const resource of task.resources) {
+          const item = element("li");
+          const safe = safeResourceUrl(resource);
+          if (safe) {
+            const text = resource.label || resource.url;
+            const link = element("a", text);
+            link.href = safe;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.setAttribute("aria-label", `Open resource ${text} in a new browser tab`);
+            item.append(link);
+          } else {
+            item.append(element("span", `${resource.label || resource.url} (not a web link)`));
+          }
+          links.append(item);
+        }
+        card.append(links);
+      }
       if (task.note) card.append(element("p", task.note, "note"));
       if (task.completedAt) card.append(element("p", "Marked complete"));
       if (task.cancelledAt) card.append(element("p", "Cancelled"));
@@ -328,9 +402,35 @@ function renderTasks() {
         $("task-title").focus();
       });
       card.append(edit);
+      for (const [type, field, text] of [["complete", "completedAt", "Mark complete"], ["cancel", "cancelledAt", "Cancel task"]]) {
+        const button = element("button", text);
+        button.type = "button";
+        button.dataset.decided = String(Boolean(task[field]));
+        button.disabled = Boolean(task[field]);
+        button.setAttribute("aria-label", `${text}: ${task.title}`);
+        button.addEventListener("click", () => decideTask(task.id, type));
+        card.append(button);
+      }
       container.append(card);
     }
   }
+}
+
+// Explicit lifecycle decisions only; no session outcome ever completes a task.
+async function decideTask(taskId, type) {
+  if (busy || !snapshot) return;
+  clearError();
+  try {
+    setBusy(true);
+    snapshot = await store.commit(store.localScopeId, snapshot.revision,
+      [{ type, taskId, decidedAt: new Date().toISOString() }]);
+    renderTasks();
+    status.textContent = type === "complete"
+      ? "Task marked complete. Planning records are kept."
+      : "Task cancelled. Planning records are kept.";
+  } catch (error) { fail(error); return; }
+  finally { setBusy(false); }
+  document.querySelector(`article[data-task-id="${taskId}"]`)?.focus();
 }
 
 function unsaved() {
@@ -377,6 +477,18 @@ breakList.addEventListener("click", (event) => {
   unsaved();
 });
 $("add-break").addEventListener("click", () => { addBreakRow().focus(); unsaved(); });
+resourceList.addEventListener("input", unsaved);
+resourceList.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const row = button.closest(".resource-row");
+  const neighbor = row.nextElementSibling ?? row.previousElementSibling;
+  row.remove();
+  (neighbor?.querySelector("input") ?? $("add-resource")).focus();
+  labelResourceRows();
+  unsaved();
+});
+$("add-resource").addEventListener("click", () => { addResourceRow().focus(); unsaved(); });
 $("cancel-edit").addEventListener("click", () => {
   resetEditor();
   status.textContent = "Editor cleared. Saved plans unchanged.";
@@ -409,6 +521,11 @@ function commandsFromForm() {
       invalid(row.querySelector("select"), "Choose a placement between adjacent sessions for each planned break.");
     }
   }
+  for (const row of resourceList.children) {
+    if (!row.querySelector(".resource-url").value.trim()) {
+      invalid(row.querySelector(".resource-url"), "Enter a web address for each resource link, or remove the row.");
+    }
+  }
   const day = $("task-day").value;
   const time = $("task-start").value;
   const previousTime = editingTask?.plannedStart?.time ?? editingTask?.plannedStart;
@@ -416,7 +533,7 @@ function commandsFromForm() {
     ? editingTask.plannedStart : { time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
   const changes = {
     title: $("task-title").value, plannedStart, sessionPlan: draftItems(), plannedBreaks: draftBreaks(),
-    note: $("task-note").value,
+    resources: draftResources(), note: $("task-note").value,
   };
   const classification = $("task-classification").value;
   const parentTaskId = $("task-parent").value || null;

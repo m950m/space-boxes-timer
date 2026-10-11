@@ -30,3 +30,9 @@ button[type=submit] { background: #174a8b; color: white; }
 .break-row input { width: 8rem; }
 .break-row select { width: auto; flex: 1; min-width: 12rem; }
 #break-list { padding-block: .25rem; }
+.resource-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; border-bottom: 1px solid #b4bdcb; padding-block: .25rem; }
+.resource-row input { width: auto; flex: 1; min-width: 10rem; }
+.resource-links { margin-block: .5rem; padding-left: 1.5rem; }
+.resource-links a { color: #174a8b; }
+.resource-links span { color: #67758a; }
+article:focus-visible, article:focus { outline: 3px solid #174a8b; outline-offset: 3px; }
