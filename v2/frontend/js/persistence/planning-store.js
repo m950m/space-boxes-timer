@@ -5,9 +5,32 @@ import {
 } from "../domain/task-planning.js";
 import { setTaskClassification } from "../domain/task-classification.js";
 import { validateTaskHierarchy, setTaskParent, splitTaskPlanningRecord } from "../domain/task-hierarchy.js";
+import { createFocusState, validateFocusState, transitionFocus } from "../focus/focus-lifecycle.js";
 
 export const DATABASE_NAME = "space-boxes-v2";
-const STORES = ["metadata", "scopes", "tasks"];
+export const DATABASE_VERSION = 2;
+const PLANNING_STORES = ["metadata", "scopes", "tasks"];
+const STORES = [...PLANNING_STORES, "focus"];
+
+function validateSchema(tx, names = STORES) {
+  if (JSON.stringify([...tx.db.objectStoreNames]) !== JSON.stringify([...names].sort())) {
+    throw new TypeError("Invalid storage schema.");
+  }
+  for (const [name, keyPath] of [["metadata", "key"], ["scopes", "ownershipScopeId"],
+    ["tasks", ["ownershipScopeId", "id"]], ...(names.includes("focus") ? [["focus", "ownershipScopeId"]] : [])]) {
+    if (JSON.stringify(tx.objectStore(name).keyPath) !== JSON.stringify(keyPath)) throw new TypeError("Invalid storage key structure.");
+  }
+  const index = tx.objectStore("tasks").index("scope");
+  if (index.keyPath !== "ownershipScopeId" || index.unique || index.multiEntry) throw new TypeError("Invalid scope index.");
+}
+
+function hydrateFocus(record, scopeId, tasks) {
+  const state = record === undefined ? createFocusState(scopeId) : validateFocusState(record);
+  if (state.ownershipScopeId !== scopeId || state.sessions.some((session) => !tasks.some((task) => task.id === session.taskId))) {
+    throw new TypeError("Invalid local focus/task association.");
+  }
+  return state;
+}
 
 function validateTasks(tasks, scopeId) {
   validateTaskHierarchy(tasks);
@@ -75,7 +98,7 @@ function transaction(db, mode, work) {
     let tx;
     let result;
     let failure;
-    try { tx = db.transaction(STORES, mode); } catch (error) { reject(error); return; }
+    try { tx = db.transaction(STORES, mode, { durability: "strict" }); } catch (error) { reject(error); return; }
     tx.oncomplete = () => resolve(result);
     tx.onabort = () => reject(failure ?? tx.error ?? new DOMException("Transaction aborted.", "AbortError"));
     const guard = (run) => {
@@ -85,7 +108,7 @@ function transaction(db, mode, work) {
   });
 }
 
-/** Native local-only planning persistence. No focus authority or history lifecycle. */
+/** Native local-only planning and serialized focus persistence; success means commit. */
 export async function openPlanningStore({ onStatus = () => {} } = {}) {
   let latestOperation = 0;
   // A status observer cannot change whether a storage operation committed.
@@ -98,20 +121,24 @@ export async function openPlanningStore({ onStatus = () => {} } = {}) {
   let closed = false;
   try {
     db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open(DATABASE_NAME, 1);
+      const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
       let failed = false;
       const fail = (error) => { failed = true; reject(error); };
       request.onblocked = () => fail(new DOMException("Storage upgrade is blocked. Close other V2 tabs and reload.", "InvalidStateError"));
       request.onerror = () => fail(request.error);
       request.onupgradeneeded = (event) => {
         try {
-          if (event.oldVersion !== 0) throw new TypeError("Unsupported storage upgrade.");
           const connection = request.result;
-          connection.createObjectStore("metadata", { keyPath: "key" })
-            .add({ key: "localScopeId", value: crypto.randomUUID() });
-          connection.createObjectStore("scopes", { keyPath: "ownershipScopeId" });
-          connection.createObjectStore("tasks", { keyPath: ["ownershipScopeId", "id"] })
-            .createIndex("scope", "ownershipScopeId");
+          if (event.oldVersion === 0) {
+            connection.createObjectStore("metadata", { keyPath: "key" })
+              .add({ key: "localScopeId", value: crypto.randomUUID() });
+            connection.createObjectStore("scopes", { keyPath: "ownershipScopeId" });
+            connection.createObjectStore("tasks", { keyPath: ["ownershipScopeId", "id"] })
+              .createIndex("scope", "ownershipScopeId");
+          } else if (event.oldVersion === 1) {
+            validateSchema(request.transaction, PLANNING_STORES);
+          } else throw new TypeError("Unsupported storage upgrade.");
+          connection.createObjectStore("focus", { keyPath: "ownershipScopeId" });
         } catch (error) { request.transaction.abort(); fail(error); }
       };
       request.onsuccess = () => {
@@ -130,16 +157,13 @@ export async function openPlanningStore({ onStatus = () => {} } = {}) {
       throw new TypeError("Invalid storage schema.");
     }
     const initial = await transaction(db, "readonly", (tx, done, guard) => {
-      for (const [name, keyPath] of [["metadata", "key"], ["scopes", "ownershipScopeId"], ["tasks", ["ownershipScopeId", "id"]]]) {
-        if (JSON.stringify(tx.objectStore(name).keyPath) !== JSON.stringify(keyPath)) throw new TypeError("Invalid storage key structure.");
-      }
+      validateSchema(tx);
       const tasksStore = tx.objectStore("tasks");
-      const scopeIndex = tasksStore.index("scope");
-      if (scopeIndex.keyPath !== "ownershipScopeId" || scopeIndex.unique || scopeIndex.multiEntry) throw new TypeError("Invalid scope index.");
       const meta = tx.objectStore("metadata").get("localScopeId");
       const scopes = tx.objectStore("scopes").getAll();
       const tasks = tasksStore.getAll();
-      tasks.onsuccess = () => guard(() => {
+      const focus = tx.objectStore("focus").getAll();
+      focus.onsuccess = () => guard(() => {
         requireReference(meta.result?.value, "local scope identity");
         const byScope = new Map(scopes.result.map((scope) => [scope.ownershipScopeId, scope]));
         for (const task of tasks.result) {
@@ -149,6 +173,9 @@ export async function openPlanningStore({ onStatus = () => {} } = {}) {
           requireReference(scope.ownershipScopeId, "ownershipScopeId");
           hydrate(scope.ownershipScopeId, scope, tasks.result.filter((task) => task.ownershipScopeId === scope.ownershipScopeId));
         }
+        if (focus.result.length > 1) throw new TypeError("Multiple local focus aggregates.");
+        for (const state of focus.result) hydrateFocus(state, meta.result.value,
+          tasks.result.filter((task) => task.ownershipScopeId === meta.result.value));
         done(meta.result.value);
       });
     });
@@ -189,11 +216,53 @@ export async function openPlanningStore({ onStatus = () => {} } = {}) {
         return result;
       } catch (error) { status("error", error, operation); throw error; }
     }
+    async function runFocus(command) {
+      const writing = command !== undefined;
+      const operation = ++latestOperation;
+      status(writing ? "saving" : "loading", undefined, operation);
+      try {
+        if (closed) throw new DOMException("Storage connection closed. Reload V2.", "InvalidStateError");
+        const input = writing ? structuredClone(command) : undefined;
+        const result = await transaction(db, writing ? "readwrite" : "readonly", (tx, done, guard) => {
+          const scope = tx.objectStore("scopes").get(initial);
+          const records = tx.objectStore("tasks").index("scope").getAll(initial);
+          const focusStore = tx.objectStore("focus");
+          const focus = focusStore.get(initial);
+          focus.onsuccess = () => guard(() => {
+            const planning = hydrate(initial, scope.result, records.result);
+            const current = hydrateFocus(focus.result, initial, planning.tasks);
+            if (!writing) { done(current); return; }
+            if (!input || typeof input !== "object") throw new TypeError("A focus command is required.");
+            if (Object.hasOwn(input, "task")) throw new TypeError("Start snapshots must come from persisted planning.");
+            if (input.type === "start") {
+              if (!Number.isSafeInteger(input.expectedPlanningRevision) || input.expectedPlanningRevision !== planning.revision) {
+                throw new DOMException("Stale planning revision. Reload before Start.", "InvalidStateError");
+              }
+              requireReference(input.taskId, "taskId");
+              input.task = planning.tasks.find((task) => task.id === input.taskId);
+              if (!input.task) throw new RangeError("Task was not found in the local scope.");
+              // Persisted Plan Day context outranks a viewer's current timezone.
+              input.timezone = input.task.planDay?.timezone ?? input.timezone;
+            }
+            const next = transitionFocus(current, input);
+            focusStore.put(next);
+            done(next);
+          });
+        });
+        status(writing ? "saved" : "ready", undefined, operation);
+        return result;
+      } catch (error) { status("error", error, operation); throw error; }
+    }
     status("ready", undefined, 0);
     return {
       localScopeId: initial,
       load: (scopeId = initial) => run(scopeId, false),
       commit: (scopeId, expectedRevision, commands) => run(scopeId, true, expectedRevision, commands),
+      loadFocus: () => runFocus(),
+      commitFocus: (command) => {
+        // Undefined is invalid write intent, never a silently successful load.
+        return runFocus(command === undefined ? null : command);
+      },
       close: () => { closed = true; db.close(); },
     };
   } catch (error) { db?.close(); status("error", error, 0); throw error; }

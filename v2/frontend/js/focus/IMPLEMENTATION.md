@@ -1,7 +1,7 @@
 # WS-A / V2-012 implementation and handoff
 
-Recorded 2026-10-12 (Africa/Cairo). **Independent domain package implemented;
-persistence/browser controller/UI integration pending.**
+Recorded 2026-10-12 (Africa/Cairo). **Domain, IndexedDB persistence and browser
+controller implemented; planner mounting and complete vertical-slice QA pending.**
 
 Workstream [#29](https://github.com/m950m/space-boxes-timer/issues/29), acceptance
 task [#28](https://github.com/m950m/space-boxes-timer/issues/28), delivery index
@@ -23,10 +23,11 @@ inference, capped nonduplicate focus and retained Running/Paused authority.
 domain package.** The previous 1-second/5-second/1-second proposal is not approved
 fixed product policy. Browser sampling requires reasoning and deterministic tests.
 
-Do not modify `planning-store.js` until Zcode explicitly acknowledges the exclusive
-window and confirms no local unpushed or concurrent edits. Remote branch state
-cannot establish that acknowledgement. Do not modify `app.js`, `index.html`,
-other shared files or Planner-owned files. No PR, merge, deployment or deletion.
+The owner-approved exclusive `planning-store.js` window was activated by
+[Zcode's acknowledgement](https://github.com/m950m/space-boxes-timer/issues/29#issuecomment-6114151992):
+no unpushed/concurrent shared-file work, WS-A sole writer until published handoff.
+`app.js`, `index.html`, other shared files and Planner-owned files remain outside
+this scope. No PR, merge, deployment or branch deletion.
 
 ## Implemented domain contract
 
@@ -80,25 +81,98 @@ original recorded ending. Completion during reconciliation retains an unobserved
 running tail as uncertainty or unknown pause tail as pause. Reconciling old
 history leaves a later reservation and its control references untouched.
 
+## Implemented persistence and browser contract
+
+[planning-store.js](../persistence/planning-store.js) keeps `openPlanningStore`,
+`localScopeId`, `load`, `commit`, `close` and status callbacks compatible. Database
+`space-boxes-v2` is now version **2**, adding only `focus` keyed by
+`ownershipScopeId`. Existing `metadata`, `scopes`, `tasks`, keys/index and all
+records are preserved. Upgrade from v1 validates its physical schema before
+adding the store. Aborted upgrades roll back; malformed/future data fails visibly
+without reset. V1 localStorage is untouched. Opening validates stored focus and
+its task associations; corrupt authority never becomes an empty replacement.
+
+- `loadFocus()` returns a detached aggregate for the single persisted local scope.
+  It cannot acquire control. Other planning scopes remain supported by the planner
+  API but cannot create independent focus authority through this local-only API.
+- `commitFocus(command)` loads planning and focus, validates and writes in one
+  IndexedDB read/write transaction spanning all stores. Native transaction
+  serialization and `expectedRevision` reject competing/stale requests. Success
+  and `saved` occur only on transaction completion, with strict durability requested.
+- Storage Start takes `taskId`, `plannedItemId`, `expectedPlanningRevision` plus
+  the domain command fields. Caller-supplied `task` snapshots are rejected. The
+  adapter obtains the task and frozen context from the serialized persisted plan.
+  Persisted `planDay.timezone` wins over viewer timezone; legacy opaque plans
+  without that field require explicit `timezone`. Start cannot silently accept
+  a plan revision different from the user's selected revision.
+- Focus transitions do not write planning records. Planner changes cannot rewrite
+  stored session snapshots/evidence; retired planned-item identities remain in
+  existing planning records. No account/server or cross-device authority exists.
+
+[browser-focus.js](browser-focus.js) exports `createBrowserFocus(store, options)`
+and `SAMPLING`. The controller offers `load`, `start`, `checkpoint`, `pause`,
+`resume`, `end`, explicit `recover({ confirmed: true })`, `reconcile`, `watch` and
+`stop`. `watch` schedules persisted checkpoints only for accepted control;
+`stop` stops sampling without releasing reservation. Call `load` before commands.
+Default context IDs are fresh UUIDs per controller; an injected context ID must
+not be reused to bypass recovery. `onState` reports detached accepted state,
+`onError` reports automatic sampling failures and manual failures reject.
+Observers may load/mirror, but Start/control requires persisted acceptance. UI
+should use the returned controller identity and reservation to offer confirmed
+recovery, and derive duration from `getSessionActivity`, never display ticks.
+
+### Continuity reasoning and limits
+
+The implementation samples every **1000 ms**, accepts callback gaps no larger
+than **2500 ms**, and compares wall/monotonic deltas with **250 ms** tolerance.
+These are technical sampling settings, not fixed product/idle policy. The cadence
+bounds normal uncommitted evidence to roughly one tick; the gap allows ordinary
+callback jitter but rejects delayed/throttled callbacks. Clock tolerance allows
+sampling/clock granularity without accepting large wall-clock jumps. No keyboard,
+mouse, visibility or cognitive-activity threshold is used.
+
+Both clocks must advance nonnegatively and agree. A larger callback gap retains
+its measured elapsed duration as uncertain, without credit. Negative/reversed or
+inconsistent clocks retain observed boundaries and unknown elapsed duration;
+the user supplies explicit reconciliation. New page/process/controller recovery
+has no trustworthy live boundary and always closes the unobserved interval as
+unknown, retaining Running/Paused mode and requiring confirmed transfer. Former
+controllers and stale revisions cannot change state. Explicit pause remains
+non-focus even when its duration is unknown.
+
+Browser clocks cannot prove attention or detect every short suspend/compensating
+clock change below this resolution. Only observed continuous callbacks qualify
+for measured credit; no wall-clock-only recovery or guarantee against browser
+storage eviction is claimed. Whole-scope aggregate/history validation and strict
+writes are deliberately bounded initial implementation choices; growing history
+or measured write latency warrants later profiling, not an invented retention cap.
+
 ## Verification and exact next action
 
-Run `python3 v2/frontend/tests/run-focus-domain-tests.py`. The Focus-owned fixture
-runs in installed Chrome using Python stdlib and an ephemeral origin/profile,
-alongside six unchanged planning regression suites. No installs are required.
-The published #29 checkpoint records results and tested revision. JSON round-trip
-tests prove domain rehydration, **not disk persistence, browser-restart authority
-or two-tab transaction serialization**.
+- `python3 v2/frontend/tests/run-focus-domain-tests.py`: 119 real-Chrome checks
+  (38 unchanged Focus domain + 81 unchanged planning domain regressions).
+- `python3 v2/frontend/tests/run-focus-persistence-tests.py`: existing persistence
+  checks plus Focus-specific migration, authority, two actual tabs, failures,
+  no-input sampling, actual callback stall, deterministic forward/backward clocks,
+  stopped/reset monotonic clock, reload and separate browser-process restarts for
+  both Running and Paused. The published #29 checkpoint records final results.
 
-Actual diff review covered accepted criteria, data-model integrity and ownership.
-Repairs addressed unknown-pause reconciliation, historical control references,
-relative duration rounding and absolute completion-time trust. A boundary-test
-helper was corrected after the initial run. No shared files were modified.
+The Focus-owned runner adapts four schema-version expressions in the existing
+persistence fixture **in memory**: two raw reads open the current version and the
+future-version test uses v3. Original tests/assertions and shared runners/files
+remain untouched. Existing malformed-v1, upgrade, UI status and V1-isolation checks
+run. The runner enables popups only in a disposable profile for actual two-tab
+coverage. No dependencies are installed.
 
-Next: obtain Zcode's explicit persistence-window acknowledgement, then integrate
-compatible IndexedDB upgrade/open/schema and atomic planning/focus transitions
-while preserving planner API, records, visible failures and V1 data. Choose and
-justify browser sampling at that stage; test throttling/restart/clock cases,
-transactions, two tabs and storage failures plus existing persistence regressions.
-Publish API/schema, verified SHA and end-of-window handoff on #29 before returning
-ownership. Planner mounting remains separately gated; #28 is not fully delivered
-or overall QA-passing at this independent-package checkpoint.
+Diff review covers accepted scope, commit-only success, serialization, original
+attribution, failure preservation and unchanged domain work. A test-harness popup
+block was repaired by enabling popups in the disposable profile. This package
+still does **not** satisfy the complete #28 UI/keyboard/status/reconciliation
+interaction criteria. No real OS suspend experiment or full mounted-focus UI QA
+is claimed; clock/suspend discontinuity inputs are tested deterministically.
+
+Next: publish verified checkpoint/API/schema/tests and end-of-window handoff on
+#29. Request controlled integration/rebase before WS-B takes shared persistence
+ownership. Separately approve serial `app.js`/`index.html` focus mounting and
+accessible lifecycle/recovery/reconciliation UI; then run complete #28 acceptance
+and UI QA. Until approved, those entrypoints remain untouched.
