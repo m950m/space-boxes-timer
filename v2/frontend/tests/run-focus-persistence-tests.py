@@ -1,7 +1,6 @@
 """Real Chrome focus/restart tests plus existing persistence regressions.
 
-Shared fixtures stay untouched. Four version-bound fixture expressions are adapted
-in memory for schema v2; all existing assertions and test scenarios run.
+Serves the on-disk fixtures unchanged; all existing assertions and scenarios run.
 """
 
 import functools
@@ -19,37 +18,12 @@ def main():
     if not browser:
         raise SystemExit("Chrome/Chromium required; no tests executed.")
     root = pathlib.Path(__file__).resolve().parents[1]
-    fixture = (root / "tests/persistence.test.js").read_text()
-    adaptations = {
-        'const db = await requestResult(indexedDB.open(DATABASE_NAME, 1));':
-            'const db = await requestResult(indexedDB.open(DATABASE_NAME));',
-        'const raw = await requestResult(indexedDB.open(DATABASE_NAME, 1));':
-            'const raw = await requestResult(indexedDB.open(DATABASE_NAME));',
-        'const upgrade = indexedDB.open(DATABASE_NAME, 2);':
-            'const upgrade = indexedDB.open(DATABASE_NAME, 3);',
-        'assert(newer.version === 2 &&': 'assert(newer.version === 3 &&',
-    }
-    for before, after in adaptations.items():
-        if fixture.count(before) != 1:
-            raise SystemExit(f"Fixture changed; review version adaptation: {before}")
-        fixture = fixture.replace(before, after)
     received = threading.Event()
     reports = []
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *_args):
             pass
-
-        def do_GET(self):
-            if self.path == "/tests/persistence.test.js":
-                data = fixture.encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/javascript")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-            else:
-                super().do_GET()
 
         def do_POST(self):
             if self.path != "/results":

@@ -15,6 +15,30 @@
       <p id="planner-error" role="alert" aria-atomic="true"></p>
       <p id="timezone-context"></p>
       <button id="reload-plans" type="button" disabled>Reload saved plans (discard edits)</button>
+      <section id="focus-panel" aria-labelledby="focus-heading" aria-busy="true">
+        <h2 id="focus-heading" tabindex="-1">Focus</h2>
+        <p id="focus-status" role="status" aria-live="polite" aria-atomic="true">Loading saved focus…</p>
+        <p id="focus-error" role="alert" aria-atomic="true"></p>
+        <label for="focus-selection">Saved session for the shown Plan Day</label>
+        <select id="focus-selection" disabled></select>
+        <button id="focus-start" type="button" disabled>Start selected session</button>
+        <button id="focus-refresh" type="button" disabled>Refresh saved focus</button>
+        <p id="focus-context"></p>
+        <p id="focus-duration"></p>
+        <button id="focus-pause" type="button" hidden>Pause session</button>
+        <button id="focus-resume" type="button" hidden>Resume session</button>
+        <button id="focus-end" type="button" hidden>End session</button>
+        <div id="focus-recovery" hidden>
+          <p>This session is reserved by another tab or a previous browser visit. Confirm to move control here. Unobserved time remains unresolved; a paused session stays paused.</p>
+          <button id="focus-recover" type="button">Confirm recovery / move control here</button>
+        </div>
+        <p>Only saved, confirmed focus counts. Session endings do not mark tasks complete. Further sessions require an explicit Start.</p>
+        <div id="focus-reconciliation"></div>
+        <details>
+          <summary>Saved session history and outcomes</summary>
+          <div id="focus-history"></div>
+        </details>
+      </section>
       <div class="layout">
         <section aria-labelledby="editor-heading">
           <h2 id="editor-heading">Create task</h2>
