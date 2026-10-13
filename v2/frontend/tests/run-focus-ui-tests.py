@@ -97,7 +97,7 @@ def suite(client, url, profile):
     first = state(client)["reservation"]["sessionId"]
     wait(client, "store.loadFocus().then(s => activity(s, s.reservation.sessionId).confirmedActiveMs > 900)")
     state(client)
-    check(client, "document.querySelector('#focus-context').textContent.includes('Pacific/Honolulu') && savedFocus.sessions[0].plannedItemId === originalTask.sessionPlan[0].id && document.querySelector('#focus-duration').textContent.includes((activity(savedFocus, savedFocus.reservation.sessionId).confirmedActiveMs / 1000).toFixed(1))", "display uses durable credit, original timezone and selected stable item")
+    check(client, "(() => { const a = activity(savedFocus, savedFocus.reservation.sessionId); const s = Math.round(a.confirmedActiveMs / 100) / 10; const expected = s < 60 ? (s === 1 ? '1 second' : s.toFixed(1) + ' seconds') : null; const text = document.querySelector('#focus-duration').textContent; return expected === null || text.includes('Confirmed focus: ' + expected); })() && document.querySelector('#focus-context').textContent.includes('Pacific/Honolulu') && savedFocus.sessions[0].plannedItemId === originalTask.sessionPlan[0].id", "display uses durable credit, original timezone and selected stable item")
     check(client, "document.activeElement.id === 'focus-heading' && document.querySelector('#focus-start').disabled", "accepted Start focuses status context and reserves selection")
     fill(client, "#task-title", "Unsaved Planner draft")
     client.evaluate("new Promise(r => setTimeout(r, 1100))")
@@ -113,6 +113,7 @@ def suite(client, url, profile):
     activate(client, "#focus-end")
     state(client)
     check(client, "savedFocus.reservation === null && savedFocus.sessions[0].ending.outcome === 'ended-early' && document.querySelector('#focus-history').textContent.includes('ended-early')", "End from Pause preserves early outcome and history")
+    check(client, "document.querySelector('#focus-status').textContent.includes('Last session ended early') && document.querySelector('#focus-status').textContent.includes('confirmed focus')", "explicit End outcome and confirmed duration are announced in live status")
     check(client, "store.load().then(p => !p.tasks[0].completedAt && p.tasks[0].history[0].sessionId === 'external-history')", "Focus leaves task completion and preexisting history intact")
     start(client)
     client.call("Page.reload")
@@ -177,6 +178,7 @@ def suite(client, url, profile):
     wait(client, "document.querySelector('#focus-status').textContent.includes('No active')")
     state(client)
     check(client, "savedFocus.sessions.at(-1).ending.outcome === 'completed' && activity(savedFocus, savedFocus.sessions.at(-1).id).confirmedActiveMs === 1800", "duration target completes and caps persisted UI credit")
+    check(client, "document.querySelector('#focus-status').textContent.includes('Last session completed its planned focus duration') && document.querySelector('#focus-status').textContent.includes('1.8 seconds')", "duration completion outcome and confirmed credit are announced in live status")
     check(client, "store.load().then(p => !p.tasks[0].completedAt && savedFocus.reservation === null)", "session completion never completes task or starts next session")
     # Correct an ended outcome through the mounted history reconciliation form.
     # Introduce an actual callback stall, then End with uncertainty retained.

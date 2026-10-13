@@ -1,7 +1,18 @@
 import { createBrowserFocus } from "./browser-focus.js";
 import { getSessionActivity } from "./activity-evidence.js";
 
-const duration = (ms) => `${(ms / 1000).toFixed(1)} seconds`;
+const unit = (value, name) => `${value} ${name}${value === 1 ? "" : "s"}`;
+const duration = (ms) => {
+  const tenths = Math.round(ms / 100);
+  if (tenths < 600) return tenths === 10 ? "1 second" : `${(tenths / 10).toFixed(1)} seconds`;
+  let seconds = Math.round(tenths / 10);
+  const hours = Math.floor(seconds / 3600);
+  seconds -= hours * 3600;
+  const minutes = Math.floor(seconds / 60);
+  seconds -= minutes * 60;
+  return [hours && unit(hours, "hour"), minutes && unit(minutes, "minute"),
+    seconds && unit(seconds, "second")].filter(Boolean).join(" ");
+};
 const instant = (at) => new Date(at).toISOString();
 function node(tag, text) {
   const result = document.createElement(tag);
@@ -32,15 +43,28 @@ export function mountFocus(store) {
     render();
   }
 
+  function statusMessage() {
+    if (failed) return "Error — showing the last confirmed focus state; refresh required.";
+    if (!state) return "Loading saved focus…";
+    if (state.reservation) {
+      const reserved = state.reservation.state === "running" ? "Running" : "Paused";
+      const holder = state.reservation.controllerId === controller.contextId
+        ? "controlled here" : "reserved elsewhere; explicit recovery required";
+      return `${reserved} — ${holder}.`;
+    }
+    if (!state.sessions.length) return "No active reservation. Start a saved session explicitly.";
+    // The live status must say what happened to the session, not just that control ended.
+    const ended = state.sessions.at(-1);
+    const activity = getSessionActivity(state, ended.id);
+    return `No active reservation. Last session ${activity.effectiveOutcome === "completed" ? "completed its planned focus duration" : "ended early"}; confirmed focus ${duration(activity.confirmedActiveMs)}. Start a saved session explicitly.`;
+  }
+
   function render() {
     const reservation = state?.reservation;
     const owns = reservation?.controllerId === controller.contextId;
     const disabled = busy || failed || !state;
     $("focus-panel").setAttribute("aria-busy", String(busy));
-    const message = failed ? "Error — showing the last confirmed focus state; refresh required."
-      : !state ? "Loading saved focus…"
-        : reservation ? `${reservation.state === "running" ? "Running" : "Paused"} — ${owns ? "controlled here" : "reserved elsewhere; explicit recovery required"}.`
-          : "No active reservation. Start a saved session explicitly.";
+    const message = statusMessage();
     // Do not announce every persisted one-second sample to assistive technology.
     if ($("focus-status").textContent !== message) $("focus-status").textContent = message;
     $("focus-selection").disabled = disabled || !!reservation || !plan;

@@ -11,6 +11,23 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
+
+EXPECTED_CHECKS = {"persistence": 21, "focus-persistence": 26}
+
+
+def discard_profile(profile, attempts=10):
+    # Chrome may still hold profile files briefly after exit (observed as
+    # "OSError: [Errno 39] Directory not empty" in Python's rmtree). Retry
+    # briefly and report; never mask the already-posted test results.
+    for _ in range(attempts):
+        try:
+            shutil.rmtree(profile)
+            return
+        except OSError:
+            time.sleep(0.2)
+    print(f"WARNING: {profile} could not be removed (Chrome profile teardown race); "
+          "the test results above are unaffected.", flush=True)
 
 
 def main():
@@ -39,11 +56,14 @@ def main():
     )
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
+        grand_total = 0
         for name, phases in (
             ("persistence", ("suite", "restart")),
             ("focus-persistence", ("suite", "restart-running", "restart-paused")),
         ):
-            with tempfile.TemporaryDirectory(prefix=f"v2-{name}-") as profile:
+            profile = tempfile.mkdtemp(prefix=f"v2-{name}-")
+            try:
+                suite_reports = []
                 for phase in phases:
                     received.clear()
                     with tempfile.TemporaryFile(mode="w+") as log:
@@ -64,11 +84,19 @@ def main():
                                 process.kill()
                                 process.wait()
                     report = reports[-1]
+                    suite_reports.append(report)
                     for check in report["checks"]:
                         print(check, flush=True)
                     if report.get("error"):
-                        raise SystemExit(report["error"])
-        print(f"PASS {sum(len(report['checks']) for report in reports)} real-Chrome checks; "
+                        raise SystemExit(f"{name}/{phase}: {report['error']}")
+                total = sum(len(report["checks"]) for report in suite_reports)
+                if total != EXPECTED_CHECKS[name]:
+                    raise SystemExit(f"{name}: expected {EXPECTED_CHECKS[name]} checks, received {total}; "
+                                     "a phase reported missing or unexpected results.")
+                grand_total += total
+            finally:
+                discard_profile(profile)
+        print(f"PASS {grand_total} real-Chrome checks; "
               "planning persistence + focus, actual reload + process restarts")
     finally:
         server.shutdown()

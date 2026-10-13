@@ -1,7 +1,8 @@
 # WS-A / V2-012 implementation and handoff
 
-Recorded 2026-10-12 (Africa/Cairo). **Domain, IndexedDB persistence and browser
-controller implemented; planner mounting and complete vertical-slice QA pending.**
+Recorded 2026-10-12 (Africa/Cairo); status updated 2026-10-13. **Domain, IndexedDB
+persistence, browser controller and the mounted planner Focus panel are implemented
+and validated locally (PR #43); the owner-gated #28 acceptance review remains.**
 
 Workstream [#29](https://github.com/m950m/space-boxes-timer/issues/29), acceptance
 task [#28](https://github.com/m950m/space-boxes-timer/issues/28), delivery index
@@ -26,8 +27,9 @@ fixed product policy. Browser sampling requires reasoning and deterministic test
 The owner-approved exclusive `planning-store.js` window was activated by
 [Zcode's acknowledgement](https://github.com/m950m/space-boxes-timer/issues/29#issuecomment-6114151992):
 no unpushed/concurrent shared-file work, WS-A sole writer until published handoff.
-`app.js`, `index.html`, other shared files and Planner-owned files remain outside
-this scope. No PR, merge, deployment or branch deletion.
+`app.js`, `index.html`, other shared files and Planner-owned files remained
+outside that window. The separately authorized #42 integration (PR #43) later
+mounted the panel in `app.js`/`index.html` and added [focus-view.js](focus-view.js).
 
 ## Implemented domain contract
 
@@ -157,22 +159,29 @@ or measured write latency warrants later profiling, not an invented retention ca
   stopped/reset monotonic clock, reload and separate browser-process restarts for
   both Running and Paused. The published #29 checkpoint records final results.
 
-The Focus-owned runner adapts four schema-version expressions in the existing
-persistence fixture **in memory**: two raw reads open the current version and the
-future-version test uses v3. Original tests/assertions and shared runners/files
-remain untouched. Existing malformed-v1, upgrade, UI status and V1-isolation checks
-run. The runner enables popups only in a disposable profile for actual two-tab
+Under the #42 authorization the shared persistence fixture
+(`persistence.test.js`) now encodes schema v2 on disk: two raw reads open the
+database unversioned and the future-version test uses v3; every original
+test/assertion and the shared `run-browser-tests.py` remain untouched. Existing
+malformed-v1, upgrade, UI status and V1-isolation checks run unmodified. The
+Focus runner enables popups only in a disposable profile for actual two-tab
 coverage. No dependencies are installed.
 
 Diff review covers accepted scope, commit-only success, serialization, original
-attribution, failure preservation and unchanged domain work. A test-harness popup
-block was repaired by enabling popups in the disposable profile. This package
-still does **not** satisfy the complete #28 UI/keyboard/status/reconciliation
-interaction criteria. No real OS suspend experiment or full mounted-focus UI QA
-is claimed; clock/suspend discontinuity inputs are tested deterministically.
+attribution and failure preservation. A test-harness popup block was repaired by
+enabling popups in the disposable profile. The mounted panel
+([focus-view.js](focus-view.js)) exposes explicit Start/Pause/Resume/End,
+recovery, reconciliation, history and visible storage failures;
+`run-focus-ui-tests.py` validates those #28 UI/keyboard/status/reconciliation
+interactions in real Chrome (69 checks), including reload/process restarts and
+two-tab authority. Clock/sleep discontinuities are tested deterministically; no
+physical OS-suspend experiment or manual screen-reader audit is claimed (OD-027
+keeps WCAG 2.2 AA a target, not a conformance claim).
 
-Next: publish verified checkpoint/API/schema/tests and end-of-window handoff on
-#29. Request controlled integration/rebase before WS-B takes shared persistence
-ownership. Separately approve serial `app.js`/`index.html` focus mounting and
-accessible lifecycle/recovery/reconciliation UI; then run complete #28 acceptance
-and UI QA. Until approved, those entrypoints remain untouched.
+Deferred, owner-gated items: reconciling a long-hidden period presents one form
+per uncertain interval (Chrome throttles hidden tabs to roughly one timer per
+minute after five minutes); uncertain time is never silently counted or
+discarded. Whole-scope per-checkpoint validation and write cost grows with
+session length and is profiled separately. The Focus suites are not yet in CI
+(separately authorized workflow update). Next step: the owner's #28 acceptance
+review of PR #43.
