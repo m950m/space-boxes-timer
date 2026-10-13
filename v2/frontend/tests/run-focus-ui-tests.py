@@ -70,9 +70,21 @@ def reconcile(client, kind, seconds):
     check(client, "!document.querySelector('#focus-error').textContent", "reconciliation commits without false error")
 
 
+def reconcile_quick(client, seconds):
+    # Single-answer shortcut: interval duration, then one prefilled confirmed-work part.
+    form = "#focus-reconciliation form"
+    fill(client, f"{form} input[id^=elapsed-]", str(seconds))
+    click(client, f"{form} .reconcile-quick button:first-child")
+    check(client, f"document.querySelector('#focus-reconciliation select').value === 'focus' && document.querySelector('#focus-reconciliation input[id^=seconds-]').value === {json.dumps(str(seconds))}", "quick fill prefills a single confirmed-work part")
+    activate(client, f"{form} button[type=submit]")
+    check(client, "!document.querySelector('#focus-error').textContent", "quick reconciliation commits without false error")
+
+
 def suite(client, url, profile):
     navigate(client, url)
     check(client, "document.querySelector('#focus-status').getAttribute('role') === 'status' && document.querySelector('#focus-error').getAttribute('role') === 'alert' && document.querySelector('label[for=focus-selection]')", "labeled selector, discernible status and alert")
+    check(client, "document.querySelector('#focus-clock').getAttribute('role') === 'timer' && document.querySelector('#focus-clock').getAttribute('aria-live') === 'off'", "prominent clock is a silent live-region timer")
+    check(client, "document.querySelector('#focus-clock-remaining').textContent === '--:--' && document.querySelector('#focus-clock').dataset.state === 'none'", "empty state shows a placeholder clock")
     client.evaluate("localStorage.setItem('space-boxes-timer:tasks', 'v1-ui-sentinel')")
     fill(client, "#task-title", "Focus <script> text")
     fill(client, "#task-start", "23:55")
@@ -99,6 +111,11 @@ def suite(client, url, profile):
     state(client)
     check(client, "(() => { const a = activity(savedFocus, savedFocus.reservation.sessionId); const s = Math.round(a.confirmedActiveMs / 100) / 10; const expected = s < 60 ? (s === 1 ? '1 second' : s.toFixed(1) + ' seconds') : null; const text = document.querySelector('#focus-duration').textContent; return expected === null || text.includes('Confirmed focus: ' + expected); })() && document.querySelector('#focus-context').textContent.includes('Pacific/Honolulu') && savedFocus.sessions[0].plannedItemId === originalTask.sessionPlan[0].id", "display uses durable credit, original timezone and selected stable item")
     check(client, "document.activeElement.id === 'focus-heading' && document.querySelector('#focus-start').disabled", "accepted Start focuses status context and reserves selection")
+    check(client, "(() => { const text = document.querySelector('#focus-clock-remaining').textContent; return document.querySelector('#focus-clock').dataset.state === 'running' && (/^\\d{2}:\\d{2}$/.test(text) || /^\\d+:\\d{2}:\\d{2}$/.test(text)); })()", "running session shows a prominent live MM:SS countdown")
+    check(client, "(() => { const secs = (t) => t.split(':').reduce((sum, part) => sum * 60 + Number(part), 0); const found = /focused ([\\d:]+) of ([\\d:]+) planned/.exec(document.querySelector('#focus-clock-caption').textContent); return found && document.querySelector('#focus-clock-caption').textContent.startsWith('Running') && secs(found[1]) + secs(document.querySelector('#focus-clock-remaining').textContent) === secs(found[2]); })()", "clock caption reconciles focused, remaining and planned values")
+    first_remaining = client.evaluate("document.querySelector('#focus-clock-remaining').textContent")
+    client.evaluate("new Promise(r => setTimeout(r, 1500))")
+    check(client, f"(() => {{ const secs = (t) => t.split(':').reduce((sum, part) => sum * 60 + Number(part), 0); return secs({json.dumps(first_remaining)}) > secs(document.querySelector('#focus-clock-remaining').textContent); }})()", "live countdown decreases while running")
     fill(client, "#task-title", "Unsaved Planner draft")
     client.evaluate("new Promise(r => setTimeout(r, 1100))")
     check(client, "document.querySelector('#v2-startup-status').textContent.startsWith('Unsaved changes') && document.querySelector('#task-title').value === 'Unsaved Planner draft'", "automatic Focus checkpoints preserve Planner draft and feedback")
@@ -107,6 +124,7 @@ def suite(client, url, profile):
     client.evaluate("new Promise(r => setTimeout(r, 1200))")
     state(client)
     check(client, f"activity(savedFocus, {json.dumps(first)}).confirmedActiveMs === activity({json.dumps(paused)}, {json.dumps(first)}).confirmedActiveMs && savedFocus.reservation.state === 'paused'", "explicit pause remains reserved and adds no focus")
+    check(client, "(() => { const secs = (t) => t.split(':').reduce((sum, part) => sum * 60 + Number(part), 0); const found = /focused ([\\d:]+) of ([\\d:]+) planned/.exec(document.querySelector('#focus-clock-caption').textContent); return document.querySelector('#focus-clock').dataset.state === 'paused' && found && secs(found[1]) === Math.round(activity(savedFocus, savedFocus.reservation.sessionId).confirmedActiveMs / 1000); })()", "paused clock shows confirmed focus without projecting")
     activate(client, "#focus-resume")
     check(client, "document.querySelector('#focus-status').textContent.includes('Running')", "Resume is explicit and authoritative")
     activate(client, "#focus-pause")
@@ -114,6 +132,7 @@ def suite(client, url, profile):
     state(client)
     check(client, "savedFocus.reservation === null && savedFocus.sessions[0].ending.outcome === 'ended-early' && document.querySelector('#focus-history').textContent.includes('ended-early')", "End from Pause preserves early outcome and history")
     check(client, "document.querySelector('#focus-status').textContent.includes('Last session ended early') && document.querySelector('#focus-status').textContent.includes('confirmed focus')", "explicit End outcome and confirmed duration are announced in live status")
+    check(client, "document.querySelector('#focus-outcome').dataset.outcome === 'ended-early' && !document.querySelector('#focus-outcome').hidden && document.querySelector('#focus-outcome').textContent.includes('Ended early') && document.querySelector('#focus-clock').dataset.state === 'ended'", "ended-early outcome is shown prominently with the ended clock")
     check(client, "store.load().then(p => !p.tasks[0].completedAt && p.tasks[0].history[0].sessionId === 'external-history')", "Focus leaves task completion and preexisting history intact")
     start(client)
     client.call("Page.reload")
@@ -122,6 +141,7 @@ def suite(client, url, profile):
     client.evaluate("import('/js/focus/activity-evidence.js').then(m => window.activity = m.getSessionActivity)")
     state(client)
     check(client, "savedFocus.reservation.state === 'running' && !document.querySelector('#focus-recovery').hidden && document.querySelector('#focus-start').disabled && document.querySelector('#focus-pause').hidden", "reload retains Running reservation without acquiring control")
+    check(client, "document.querySelector('#focus-clock').dataset.state === 'elsewhere' && document.querySelector('#focus-clock-caption').textContent.includes('another tab')", "observer tab does not project a foreign running reservation")
     activate(client, "#focus-recover")
     wait(client, "document.querySelector('#focus-reconciliation form') !== null")
     activate(client, "#focus-pause")
@@ -179,6 +199,7 @@ def suite(client, url, profile):
     state(client)
     check(client, "savedFocus.sessions.at(-1).ending.outcome === 'completed' && activity(savedFocus, savedFocus.sessions.at(-1).id).confirmedActiveMs === 1800", "duration target completes and caps persisted UI credit")
     check(client, "document.querySelector('#focus-status').textContent.includes('Last session completed its planned focus duration') && document.querySelector('#focus-status').textContent.includes('1.8 seconds')", "duration completion outcome and confirmed credit are announced in live status")
+    check(client, "document.querySelector('#focus-outcome').dataset.outcome === 'completed' && document.querySelector('#focus-outcome').textContent.includes('Completed — planned focus reached') && document.querySelector('#focus-clock').dataset.state === 'ended'", "completed outcome is shown prominently with the ended clock")
     check(client, "store.load().then(p => !p.tasks[0].completedAt && savedFocus.reservation === null)", "session completion never completes task or starts next session")
     # Correct an ended outcome through the mounted history reconciliation form.
     # Introduce an actual callback stall, then End with uncertainty retained.
@@ -215,8 +236,9 @@ def restart(client, url, paused):
         client.evaluate("store.loadFocus().then(s => localStorage.setItem('focus-ui-restart', JSON.stringify(s)))")
     else:
         activate(client, "#focus-pause")
-        reconcile(client, "focus", 20)
+        reconcile_quick(client, 20)
         state(client)
+        check(client, "savedFocus.reconciliations.at(-1).parts.length === 1 && savedFocus.reconciliations.at(-1).parts[0].kind === 'focus' && savedFocus.reconciliations.at(-1).elapsedMs === 20000", "quick reconciliation records one explicit confirmed-work decision")
         check(client, "savedFocus.sessions.at(-1).ending.outcome === 'completed' && savedFocus.evidence.some(e => e.kind === 'pause' && e.elapsedMs === null) && document.querySelector('#focus-history').textContent.includes('Outcome: completed')", "confirmed continued work completes target while preserving unknown pause tail")
         reconcile(client, "pause", 0)
         state(client)

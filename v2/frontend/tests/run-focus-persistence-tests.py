@@ -13,7 +13,12 @@ import tempfile
 import threading
 import time
 
-EXPECTED_CHECKS = {"persistence": 21, "focus-persistence": 26}
+# Per-phase expected PASS counts: every phase must report exactly its count
+# before the next browser launch, so an incomplete or stale phase cannot pass.
+EXPECTED_CHECKS = {
+    "persistence": {"suite": 20, "restart": 1},
+    "focus-persistence": {"suite": 21, "restart-running": 2, "restart-paused": 3},
+}
 
 
 def discard_profile(profile, attempts=10):
@@ -89,11 +94,11 @@ def main():
                         print(check, flush=True)
                     if report.get("error"):
                         raise SystemExit(f"{name}/{phase}: {report['error']}")
-                total = sum(len(report["checks"]) for report in suite_reports)
-                if total != EXPECTED_CHECKS[name]:
-                    raise SystemExit(f"{name}: expected {EXPECTED_CHECKS[name]} checks, received {total}; "
-                                     "a phase reported missing or unexpected results.")
-                grand_total += total
+                    expected = EXPECTED_CHECKS[name][phase]
+                    if len(report["checks"]) != expected:
+                        raise SystemExit(f"{name}/{phase}: expected {expected} checks, received "
+                                         f"{len(report['checks'])}; phase incomplete before the next browser launch.")
+                grand_total += sum(len(report["checks"]) for report in suite_reports)
             finally:
                 discard_profile(profile)
         print(f"PASS {grand_total} real-Chrome checks; "
