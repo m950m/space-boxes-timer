@@ -1,10 +1,9 @@
-# V2 local planner
+# V2 local Planner and Focus
 
-V2 provides an isolated Vanilla JavaScript local planner and a local Django
-project, using the planning domain slices and native IndexedDB adapter described
-below. Create, display, edit, classify and reload tasks without an account.
-There are no backend database or migrations. Existing V1 files and storage keys
-are unchanged.
+V2 provides an isolated Vanilla JavaScript local Planner and Focus panel with a
+local Django project. Plan tasks, run focus sessions and recover saved sessions
+without an account, using native IndexedDB. There is no backend database or
+backend migration setup. Existing V1 files and storage keys are unchanged.
 
 ## Setup
 
@@ -70,7 +69,63 @@ python3 -m http.server 8765
 Open <http://localhost:8765/>. Inspect all new files and confirm the task changes
 are confined to `v2/`.
 
-## Usable local planner (V2-011, Issue #26)
+## Local test entrypoints and CI
+
+Run from the repository root. The six pure planning suites require `gjs`:
+
+```bash
+gjs -m v2/frontend/tests/task-classification.test.js
+gjs -m v2/frontend/tests/task-planning.test.js
+gjs -m v2/frontend/tests/session-plan.test.js
+gjs -m v2/frontend/tests/task-history.test.js
+gjs -m v2/frontend/tests/task-hierarchy.test.js
+gjs -m v2/frontend/tests/task-resources.test.js
+```
+
+The browser runners require Python stdlib and `google-chrome` or `chromium` on
+`PATH`; no Django server, Node/npm or frontend build is needed. They serve their
+own ephemeral localhost origins and use disposable browser profiles:
+
+```bash
+python3 v2/frontend/tests/run-browser-tests.py
+python3 v2/frontend/tests/run-planner-tests.py
+python3 v2/frontend/tests/run-focus-domain-tests.py
+python3 v2/frontend/tests/run-focus-persistence-tests.py
+python3 v2/frontend/tests/run-focus-ui-tests.py
+```
+
+| Runner | Coverage |
+| --- | --- |
+| `run-browser-tests.py` | Planning IndexedDB, atomic failures, status, reload and browser restart |
+| `run-planner-tests.py` | Planner editing, hierarchy/split, breaks, resources, lifecycle controls, keyboard and narrow viewport |
+| `run-focus-domain-tests.py` | Focus lifecycle/evidence/reconciliation plus all six planning domain suites |
+| `run-focus-persistence-tests.py` | Planning persistence regressions, schema upgrade, serialized authority across tabs, clock/callback discontinuities, Running/Paused reload and process restart |
+| `run-focus-ui-tests.py` | Mounted Start/Pause/Resume/End, recovery, reconciliation, outcomes/history, keyboard/status, tabs, reload and process restart |
+
+[`V2 CI`](../.github/workflows/v2-ci.yml) runs for pull requests targeting `v2`
+and pushes to `v2`, on `ubuntu-26.04`. Its three jobs run the six GJS suites and
+diff hygiene; all five browser runners above on real Chrome with Python 3.14;
+and the Django `pip check`, system check and four HTTP smoke tests shown in
+**Verify**. Diff hygiene rejects changes outside `v2/`, `_docs/` and `.github/`
+and checks whitespace. Missing GJS/browser prerequisites fail rather than skip.
+The workflow uses read-only repository permissions, job timeouts and no secrets
+or deployment steps. Branch protection and required-check settings are separate
+owner decisions.
+
+Historical hosted evidence is recorded in [Issue #40's handoff](https://github.com/m950m/space-boxes-timer/issues/40#issuecomment-6155809486):
+PR run `38365334807` passed all three Focus steps (119 domain, 47 persistence,
+82 UI checks); post-merge push run `38471949209` passed all three jobs at
+`d317bdbba9a0819da173c994b60c060fc4f2aa90`. That handoff's post-merge API evidence
+did not expose individual steps. It records no demonstrated deliberate-failure
+CI run: failure diagnostics are inspected behavior, not proof from an injected
+red run. These historical results are not a fresh execution of the commands.
+
+Browser checks cover keyboard, focus, labels and status behavior. Independent
+manual screen-reader QA has not been performed; physical OS suspend and other
+browser engines are not established by these suites. WCAG 2.2 AA remains the
+target, not validated conformance or certification.
+
+## Usable local planner (V2-011 and WS-B, Issues #26 and #30)
 
 Choose a Plan Day in **Your plan** to see Primary and Extra tasks. Use the editor
 to enter a title, Plan Day, chosen local start time and at least one focus
@@ -95,8 +150,24 @@ only after transaction commit. Failed validation/writes keep the draft and
 previous saved list. Stale revisions are rejected; **Reload saved plans (discard
 edits)** explicitly reloads the storage snapshot. Task/item identities, retired
 items, unrelated metadata and recorded history pass through existing commands.
-Resources, hierarchy and break editing/opening controls are deferred; existing
-values are retained and domain restrictions still apply to edited session plans.
+Use the optional parent selector to make a task a subtask; self/descendants are
+excluded. While editing, **Split work** creates separately planned work with a
+new identity and optional parent link to the source; the source is unchanged.
+Each new task needs its own title, day/start and focus plan.
+
+Add optional planned-break rows with duration and placement between adjacent
+focus sessions. If a reorder breaks that adjacency, fix the placement or remove
+the break before saving. Breaks are planning data only: no break timer or
+recorded-break workflow is implemented, and breaks add no planned focus minutes.
+
+Add optional resource URL/label rows. HTTP/HTTPS resources open directly in a
+new tab with opener isolation; other stored schemes remain visible inert text.
+**Mark complete** and **Cancel task** are explicit decisions that retain records
+and history. Either decision disables both lifecycle controls; pre-existing
+conflicting decisions are shown visibly. Session outcomes never decide tasks.
+The day summary's planned-focus minutes include completed tasks and exclude
+cancelled tasks, as its label states; these are planned minutes, not actual work.
+
 Keyboard controls, focus outlines, labels, status and errors support the WCAG
 2.2 AA target; this is not a conformance claim. Browser storage is not a backup.
 
@@ -113,25 +184,94 @@ recovery, status announcements and a narrow viewport. It uses a disposable origi
 and profile. Run the existing persistence browser suite and domain regressions
 below alongside it; Django smoke tests check the updated document and serving.
 
+## Focus sessions and recovery (V2-012)
+
+Save a task, choose its Plan Day in **Your plan**, then select an unfinished,
+non-cancelled task's item in **Saved session for the shown Plan Day** and press
+**Start session**. Unsaved editor changes are not the starting plan. Planned
+time never starts a session automatically. The saved starting snapshot fixes
+the title, classification, original Plan Day/timezone and target duration;
+later planning edits do not rewrite that session or its evidence.
+
+**Pause** stops focus accumulation and retains the reservation. **Resume**
+continues that session; **End session** releases it and retains the actual
+confirmed duration and outcome. Confirmed active focus reaching the frozen
+target completes the session automatically. Neither ending marks the task
+complete or starts another session; use the separate Planner decision or an
+explicit **Start session**. Original Plan Day attribution survives midnight.
+The live countdown projects between saved observations; it is not saved credit.
+Confirmed focus, pause, interruption and unresolved time are shown separately.
+Expand **Saved session history and outcomes** for retained starting context,
+recorded/effective outcomes and ending time/point; an exact clock time can be
+unknown.
+
+Only one Running or Paused reservation exists in the shared local storage
+scope. Other cooperating tabs observe it. After reload, browser restart or a
+move to another tab, choose **Confirm recovery / move control here** to transfer
+control explicitly. Loading or **Refresh saved focus** alone does not take
+control. A paused session stays paused until **Resume** or **End session**;
+the former controller's stale actions are rejected. Recovery retains unobserved
+time for reconciliation rather than counting wall-clock time as focus.
+
+For each closed uncertain interval, the panel offers an explicit decision:
+
+- A reliable measured duration is fixed. If duration is unknown, enter seconds
+  explicitly; the displayed clock boundaries do not supply a presumed duration.
+- **All confirmed work** and **All interruption** prefill a single part. For a
+  partial-work decision, use **Add part**, choose confirmed work/interruption and
+  enter seconds in order. Parts must account for the entire interval. Reuse an
+  interruption group for parts belonging to the same interruption.
+- Press **Confirm decision** to save. If you cannot confirm, leave it unresolved;
+  it contributes no confirmed focus. Unknown explicit-pause intervals accept
+  pause duration only and can never become focus.
+
+Decisions preserve original observations, avoid duplicate credit and cap focus
+at the original target. Reconciliation can update the effective outcome while
+retaining the recorded ending. It does not take control of a later session.
+
+The browser samples roughly once a second; delayed callbacks and disagreeing
+wall/monotonic clocks produce uncertain or unknown intervals. Current technical
+settings are 1000 ms sampling, a 2500 ms maximum callback gap and 250 ms clock
+tolerance, not product idle/abandonment rules. No keyboard/mouse inactivity is
+used to infer lost focus. Browser clocks cannot prove attention or detect every
+short suspend/clock change. Long-hidden tabs can accumulate many separate
+reconciliation forms; no bulk resolution is implemented. See
+[Focus implementation notes](frontend/js/focus/IMPLEMENTATION.md) for the timing
+reasoning; historical counts/CI status there may predate the current workflow.
+
+On a Focus storage/stale-action error, controls stop and the panel shows the
+last confirmed state. Use **Refresh saved focus**, inspect reservation/recovery
+and unresolved time, then retry deliberately. If Start rejected a stale plan,
+reload saved plans and reselect the item. Failed writes are not reported saved.
+
 ## Local planning persistence (V2-010, Issue #24)
 
 `frontend/js/persistence/planning-store.js` uses native IndexedDB and structured
 clone, with no new dependencies. `openPlanningStore({ onStatus })` resolves to
-`{ localScopeId, load, commit, close }`. The page's `app.js` exports a
-`planningStore` promise for this boundary; the planner uses its commands. The
-existing `role="status"` area displays Loading, Saving, Saved or Error according
+`{ localScopeId, load, commit, close, loadFocus, commitFocus }`. The page's `app.js`
+exports a `planningStore` promise for this boundary; the planner uses its commands.
+The existing `role="status"` area displays Loading, Saving, Saved or Error according
 to actual operations. Initialization/load readiness is distinct from a save.
 Status follows the latest operation started on that store; older completions
 cannot replace its pending or failure message. Saved requires that operation's
 transaction to complete.
 
-Version 1 of the isolated `space-boxes-v2` database has these object stores:
+Version 2 of the isolated `space-boxes-v2` database retains the original planning
+stores and adds Focus:
 
 | Store | Key | Value / index |
 | --- | --- | --- |
 | `metadata` | `key` | `{ key: "localScopeId", value: <random local identity> }` |
 | `scopes` | `ownershipScopeId` | `{ ownershipScopeId, revision, taskIds }`; IDs retain task order |
 | `tasks` | `[ownershipScopeId, id]` | Full existing Task aggregate; non-unique `scope` index on `ownershipScopeId` |
+| `focus` | `ownershipScopeId` | Local Focus aggregate: reservation, sessions, evidence, reconciliation and control history |
+
+The v1-to-v2 IndexedDB upgrade validates the old schema and preserves planning
+data while adding `focus`; it is distinct from Django migrations. `loadFocus()`
+reads the local scope without acquiring control. `commitFocus(command)` loads
+the saved plan and Focus state, checks revisions/authority and writes in one
+serialized IndexedDB transaction. Strict durability is requested and success is
+reported only on transaction completion. Focus writes do not rewrite plans.
 
 Local identity is generated only in the initial schema transaction and persists
 across reloads. Physical keys match the domain's opaque string scope/task
@@ -170,12 +310,12 @@ automatic retry, merging or silent last-write-wins.
 Ordinary commands cannot delete tasks or rewrite historical fields. They reuse
 the existing history-safe domain operations. Split creates separately planned
 work without copying activity. Cancellation retains records. This adapter does
-not add sessions, reservations, focus control, connected/account authority,
-clock policy, retention, deletion, V1 import, export or synchronization.
+not add connected/account authority, retention/deletion controls, V1 import,
+export or synchronization. Focus uses the separate commands described above.
 
-Initialization validates the physical schema, local identity, ordering metadata
-and all stored task collections. Invalid records, incomplete schema, denied
-access and unsupported newer versions are errors, never empty-plan fallbacks.
+Initialization validates the physical schema, local identity, ordering metadata,
+stored task collections and Focus/task associations. Invalid records, incomplete
+schema, denied access and unsupported newer versions are errors, never empty-plan fallbacks.
 Only a new database gets schema initialization. Blocked/failed initialization
 rejects; version changes close the connection and require reload. No reset,
 repair, overwrite or destructive migration is attempted. Saving resolves on
@@ -426,7 +566,7 @@ through `setTaskParent`, rather than generic planning edits. Parents may be on a
 different current Plan Day within the same scope. Traversal is iterative with no
 selected depth or child-count cap. Hierarchy does not change Primary/Extra rules,
 complete relatives, move their plans or roll their durations into parent totals.
-Tasks and subtasks share the same planning contract for later focus-session code;
+Tasks and subtasks share the same planning contract used by Focus;
 these operations create no actual session or focus authority.
 
 Splitting leaves every existing task untouched, including the source's current
@@ -466,8 +606,10 @@ is valid. No numeric note-length limit is selected by the approved specification
 Resources may be omitted or supplied as an array of `{ url, label? }` records.
 The URL must be a non-blank string; labels may be omitted, `null`, `undefined`
 or any string. Text is preserved exactly. URL parsing, scheme validation,
-normalization and direct opening remain later UI work under OD-021; this
-in-memory contract does not certify that stored text is safe to navigate to.
+normalization and direct opening are outside this domain contract under OD-021;
+the contract does not certify that stored text is safe to navigate to.
+The Planner now applies HTTP/HTTPS-only direct opening as described above;
+the domain still preserves non-web values without navigating to them.
 Resource fields are limited to URL and label, with no upload data, generated
 resource identities, uniqueness rule or resource-count cap.
 
@@ -495,7 +637,21 @@ navigation, domain exception/blocking behavior, storage, backend or dependency.
 ## Limits
 
 Settings, the public development-only secret, and Django static serving are for
-local development only. The frontend uses IndexedDB for the planning records
-described above and does not import V1 modules or access V1 storage.
-Authentication, PostgreSQL, other domain behavior, synchronization, visual
-design, CI, Docker, and production configuration remain future work.
+local development only. The frontend uses IndexedDB for plans, session evidence
+and reservations and does not import V1 modules or access V1 storage.
+Use the same hostname, port and browser profile to return to saved work: Django
+and the standalone server use different origins and do not share plans or Focus
+authority. Separate profiles/devices have independent local reservations; no
+cross-device exclusivity, account recovery or synchronization is implemented.
+Storage denial, quota failures and corrupt/unsupported records are surfaced;
+there is no silent fallback or destructive automatic reset. Clearing site data,
+profile loss or browser eviction can lose local plans/history. Browser-local
+storage is not a backup, even when a write has been confirmed.
+
+Authentication, PostgreSQL/account persistence, export/deletion UI, extension
+blocking, final artwork, Docker and production configuration remain future work.
+Approved [product requirements](../_docs/product/v2-prd.md),
+[owner decisions](../_docs/product/owner-decisions.md),
+[architecture](../_docs/architecture/architecture.md) and
+[data model](../_docs/data/v2-data-model.md) describe broader approved scope;
+they do not imply those capabilities are implemented here.
