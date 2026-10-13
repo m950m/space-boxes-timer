@@ -74,7 +74,7 @@ if (location.search === "?peer") {
       else if (["loadFocus", "commitFocus", "load", "commit"].includes(op)) {
         port.postMessage({ value: await store[op](...(input ?? [])) });
       } else throw new TypeError("Unknown peer operation.");
-    } catch (error) { port.postMessage({ error: { name: error.name, message: error.message } }); }
+    } catch (error) { port.postMessage({ error: { name: error.name, message: error.message, stack: error.stack || String(error) } }); }
   });
   opener.postMessage({ focusPeerReady: true }, location.origin);
 } else {
@@ -95,8 +95,12 @@ if (location.search === "?peer") {
       const channel = new MessageChannel();
       channel.port1.onmessage = ({ data }) => {
         channel.port1.close();
-        if (data.error) reject(new DOMException(data.error.message, data.error.name));
-        else resolve(data.value);
+        if (data.error) {
+          const failure = new DOMException(data.error.message, data.error.name);
+          // The peer's serialized stack identifies the real failing assertion.
+          Object.defineProperty(failure, "stack", { value: data.error.stack, configurable: true, writable: true });
+          reject(failure);
+        } else resolve(data.value);
       };
       tab.postMessage({ op, input }, location.origin, [channel.port2]);
     });
@@ -428,6 +432,6 @@ if (location.search === "?peer") {
     }
   } catch (error) {
     closeAll();
-    await fetch("/results", { method: "POST", body: JSON.stringify({ checks, error: error.stack }) });
+    await fetch("/results", { method: "POST", body: JSON.stringify({ checks, error: error.stack || String(error) }) });
   }
 }
