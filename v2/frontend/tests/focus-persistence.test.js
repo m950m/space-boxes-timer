@@ -369,6 +369,27 @@ if (location.search === "?peer") {
       } finally { sampled.stop(); IDBObjectStore.prototype.put = original; }
       state = await store.loadFocus();
     });
+    await test("scheduled checkpoint after End is a skipped no-op, not a false error (#49)", async () => {
+      state = await store.commitFocus(control(state, "end"));
+      let reported;
+      const race = createBrowserFocus(store, { clock: () => now, contextId: "race-tab",
+        onError: (error) => { reported = error; } });
+      await race.load();
+      await race.start({ taskId: "clock", plannedItemId: "clock-item", timezone: "Africa/Cairo",
+        expectedPlanningRevision: planning.revision });
+      now = { at: now.at + 1000, monotonic: now.monotonic + 1000 };
+      state = await race.end();
+      assert(state.reservation === null, "End did not release the reservation");
+      // A checkpoint armed before End still fires afterwards; it must observe nothing.
+      const after = await race.checkpoint();
+      assert(after.reservation === null && after.evidence.length === state.evidence.length,
+        "Post-End checkpoint wrote evidence or changed the outcome");
+      assert(reported === undefined, "Post-End checkpoint surfaced an error");
+      await rejects(() => race.end(), "RangeError");
+      // Restore the Running reservation the reload/restart recovery tests expect.
+      state = await race.start({ taskId: "clock", plannedItemId: "clock-item", timezone: "Africa/Cairo",
+        expectedPlanningRevision: planning.revision });
+    });
     // Preserve a Running reservation for real navigation and process-restart recovery.
     localStorage.setItem("focus-expected", JSON.stringify(state));
     localStorage.setItem("focus-plan", JSON.stringify(planning));

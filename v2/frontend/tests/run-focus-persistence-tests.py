@@ -17,7 +17,7 @@ import time
 # before the next browser launch, so an incomplete or stale phase cannot pass.
 EXPECTED_CHECKS = {
     "persistence": {"suite": 20, "restart": 1},
-    "focus-persistence": {"suite": 21, "restart-running": 2, "restart-paused": 3},
+    "focus-persistence": {"suite": 22, "restart-running": 2, "restart-paused": 3},
 }
 
 
