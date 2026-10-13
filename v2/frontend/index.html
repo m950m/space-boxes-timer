@@ -19,15 +19,22 @@
         <h2 id="focus-heading" tabindex="-1">Focus</h2>
         <p id="focus-status" role="status" aria-live="polite" aria-atomic="true">Loading saved focus…</p>
         <p id="focus-error" role="alert" aria-atomic="true"></p>
-        <label for="focus-selection">Saved session for the shown Plan Day</label>
-        <select id="focus-selection" disabled></select>
-        <button id="focus-start" type="button" disabled>Start selected session</button>
-        <button id="focus-refresh" type="button" disabled>Refresh saved focus</button>
+        <div id="focus-clock" role="timer" aria-live="off" aria-atomic="true" data-state="loading">
+          <p id="focus-clock-remaining">--:--</p>
+          <p id="focus-clock-caption">Loading saved focus…</p>
+        </div>
+        <p id="focus-outcome" hidden></p>
+        <div class="focus-controls" role="group" aria-label="Focus session controls">
+          <label for="focus-selection">Saved session for the shown Plan Day</label>
+          <select id="focus-selection" disabled></select>
+          <button id="focus-start" type="button" disabled>Start session</button>
+          <button id="focus-pause" type="button" hidden>Pause</button>
+          <button id="focus-resume" type="button" hidden>Resume</button>
+          <button id="focus-end" type="button" hidden>End session</button>
+          <button id="focus-refresh" type="button" disabled>Refresh saved focus</button>
+        </div>
         <p id="focus-context"></p>
         <p id="focus-duration"></p>
-        <button id="focus-pause" type="button" hidden>Pause session</button>
-        <button id="focus-resume" type="button" hidden>Resume session</button>
-        <button id="focus-end" type="button" hidden>End session</button>
         <div id="focus-recovery" hidden>
           <p>This session is reserved by another tab or a previous browser visit. Confirm to move control here. Unobserved time remains unresolved; a paused session stays paused.</p>
           <button id="focus-recover" type="button">Confirm recovery / move control here</button>

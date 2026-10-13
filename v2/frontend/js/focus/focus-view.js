@@ -14,6 +14,16 @@ const duration = (ms) => {
     seconds && unit(seconds, "second")].filter(Boolean).join(" ");
 };
 const instant = (at) => new Date(at).toISOString();
+// Fixed-width clock for the prominent live display; evidence summaries keep duration().
+const clock = (ms) => {
+  const total = Math.round(Math.max(0, ms) / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const two = (value) => String(value).padStart(2, "0");
+  return hours > 0 ? `${hours}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
+};
+const localTime = (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 function node(tag, text) {
   const result = document.createElement(tag);
   if (text !== undefined) result.textContent = text;
@@ -28,7 +38,11 @@ export function mountFocus(store) {
   let busy = false;
   let failed = false;
   let polling;
+  let clockTimer;
   let stopped = false;
+  // Presentation-only anchor for projecting the open running interval between
+  // confirmed checkpoints; it never writes evidence or changes credit.
+  let liveBase = null;
   const forms = new Map();
   const history = new Map();
   const controller = createBrowserFocus(store, {
@@ -38,6 +52,7 @@ export function mountFocus(store) {
 
   function fail(error) {
     failed = true;
+    liveBase = null;
     controller.stop();
     $("focus-error").textContent = `${error.message} Focus changes were not confirmed. Refresh saved focus before retrying.`;
     render();
@@ -59,6 +74,55 @@ export function mountFocus(store) {
     return `No active reservation. Last session ${activity.effectiveOutcome === "completed" ? "completed its planned focus duration" : "ended early"}; confirmed focus ${duration(activity.confirmedActiveMs)}. Start a saved session explicitly.`;
   }
 
+  function currentSession() {
+    const reservation = state?.reservation;
+    return state?.sessions.find((item) => item.id === reservation?.sessionId) ?? state?.sessions.at(-1);
+  }
+
+  const setOnce = (element, text) => {
+    if (element.textContent !== text) element.textContent = text;
+  };
+
+  // The display projects the open interval only while this tab owns the running
+  // reservation; observers show confirmed facts without inventing observations.
+  function updateClock() {
+    const session = currentSession();
+    if (!state || !session) {
+      $("focus-clock").dataset.state = state ? "none" : "loading";
+      setOnce($("focus-clock-remaining"), "--:--");
+      setOnce($("focus-clock-caption"), state ? "No focus sessions yet." : "Loading saved focus…");
+      return;
+    }
+    const activity = getSessionActivity(state, session.id);
+    const reservation = state.reservation;
+    const owns = reservation?.controllerId === controller.contextId;
+    const runningHere = owns && reservation.state === "running";
+    const focusedMs = runningHere && liveBase
+      ? Math.min(session.targetMs, liveBase.focusedMs + Math.max(0, Date.now() - liveBase.at))
+      : activity.confirmedActiveMs;
+    const phase = runningHere ? "running" : reservation ? (owns ? reservation.state : "elsewhere") : "ended";
+    const label = { running: "Running", paused: "Paused", elsewhere: "Controlled in another tab",
+      ended: "Session ended" }[phase] ?? "Focus";
+    $("focus-clock").dataset.state = phase;
+    setOnce($("focus-clock-remaining"), clock(session.targetMs - focusedMs));
+    setOnce($("focus-clock-caption"), `${label} · focused ${clock(focusedMs)} of ${clock(session.targetMs)} planned`);
+  }
+
+  function renderOutcome() {
+    const box = $("focus-outcome");
+    const last = state && !state.reservation ? state.sessions.at(-1) : null;
+    if (!last) { box.hidden = true; return; }
+    const activity = getSessionActivity(state, last.id);
+    const outcome = activity.effectiveOutcome ?? "unfinished";
+    box.hidden = false;
+    box.dataset.outcome = outcome;
+    setOnce(box, outcome === "completed"
+      ? `Completed — planned focus reached: ${duration(activity.confirmedActiveMs)} of ${duration(last.targetMs)}.`
+      : outcome === "ended-early"
+        ? `Ended early — confirmed focus ${duration(activity.confirmedActiveMs)} of ${duration(last.targetMs)} planned.`
+        : `No ending recorded — confirmed focus ${duration(activity.confirmedActiveMs)} of ${duration(last.targetMs)} planned.`);
+  }
+
   function render() {
     const reservation = state?.reservation;
     const owns = reservation?.controllerId === controller.contextId;
@@ -77,7 +141,7 @@ export function mountFocus(store) {
       $(id).hidden = !visible;
       $(id).disabled = disabled;
     }
-    const session = state?.sessions.find((item) => item.id === reservation?.sessionId) ?? state?.sessions.at(-1);
+    const session = currentSession();
     if (session) {
       const activity = getSessionActivity(state, session.id);
       const context = session.startingSnapshot;
@@ -87,6 +151,11 @@ export function mountFocus(store) {
       $("focus-context").textContent = "";
       $("focus-duration").textContent = "No saved focus sessions.";
     }
+    renderOutcome();
+    liveBase = owns && reservation?.state === "running" && session?.id === reservation.sessionId
+      ? { focusedMs: getSessionActivity(state, session.id).confirmedActiveMs, at: Date.now() }
+      : null;
+    updateClock();
     if (!state) return;
     for (const session of state.sessions) {
       let entry = history.get(session.id);
@@ -141,10 +210,12 @@ export function mountFocus(store) {
     const session = state.sessions.find((item) => item.id === evidence.sessionId);
     const pause = evidence.kind === "pause";
     const fields = node("fieldset");
-    fields.append(node("legend", `${pause ? "Confirm unknown pause duration" : "Reconcile uncertain interval"}: ${session.startingSnapshot.title}`),
-      node("p", `Observed boundaries: ${instant(evidence.startAt)} → ${instant(evidence.endAt)}. ${pause ? "Explicit pause never counts as focus." : "Only work you explicitly confirm counts. Keep unresolved if you cannot confirm."}`));
+    fields.append(
+      node("legend", pause ? `Unknown pause duration — ${session.startingSnapshot.title}`
+        : `Decide how this uncertain time was spent — ${session.startingSnapshot.title}`),
+      node("p", `Observed ${localTime(evidence.startAt)} → ${localTime(evidence.endAt)} (local time). ${pause ? "The pause duration is unknown; explicit pause never counts as focus." : "Only work you explicitly confirm counts. Keep unresolved if you cannot confirm."}`));
     const totalId = `elapsed-${evidence.id}`;
-    const label = node("label", evidence.elapsedMs === null ? "Total interval duration (seconds, required; clock difference is not assumed)" : "Measured interval duration (seconds)");
+    const label = node("label", evidence.elapsedMs === null ? "Interval duration (seconds, required; clock difference is not assumed)" : "Measured duration (seconds, fixed)");
     label.htmlFor = totalId;
     const total = node("input");
     total.id = totalId;
@@ -155,18 +226,48 @@ export function mountFocus(store) {
     total.readOnly = evidence.elapsedMs !== null;
     total.value = evidence.elapsedMs === null ? "" : evidence.elapsedMs / 1000;
     fields.append(label, total);
+    // Common single-answer shortcuts; they only prefill the explicit parts below.
+    function applyQuick(kind) {
+      const seconds = Number(total.value);
+      if (total.readOnly === false && (total.value.trim() === "" || !Number.isFinite(seconds) || seconds < 0)) {
+        total.setAttribute("aria-invalid", "true");
+        total.focus();
+        return;
+      }
+      total.removeAttribute("aria-invalid");
+      while (parts.children.length > 1) parts.lastElementChild.remove();
+      const row = parts.firstElementChild;
+      const kindSelect = row.querySelector("select");
+      kindSelect.value = kind;
+      kindSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      row.querySelector("input[id^=seconds-]").value = total.value;
+    }
+    if (!pause) {
+      const quick = node("div");
+      quick.className = "reconcile-quick";
+      for (const [kind, text] of [["focus", "All confirmed work"], ["interruption", "All interruption"]]) {
+        const button = node("button", text);
+        button.type = "button";
+        button.addEventListener("click", () => applyQuick(kind));
+        quick.append(button);
+      }
+      fields.append(quick);
+    }
     const parts = node("div");
-    fields.append(node("p", "Account for the entire interval in order. Use one part for continued work or interruption; add parts for partial work. Reuse an interruption group name only to explicitly join its fragments."), parts);
+    fields.append(node("p", pause
+      ? "Enter the pause duration above, then confirm it below as one explicit-pause part."
+      : "Account for the entire interval, in order, as confirmed work and/or interruption. Parts must add up to the interval duration. Use the shortcuts above for a single answer, or add parts for a split."), parts);
     function addPart() {
       const row = node("div");
+      row.className = "part-row";
       const id = crypto.randomUUID();
       const kind = node("select");
       kind.id = `kind-${id}`;
       kind.required = true;
-      kind.append(new Option("Choose interval type", ""));
+      kind.append(new Option("Choose type", ""));
       for (const [value, text] of pause ? [["pause", "Explicit pause"]]
         : [["focus", "Confirmed work"], ["interruption", "Interruption"]]) kind.append(new Option(text, value));
-      const kindLabel = node("label", `Part ${parts.children.length + 1} type (required)`);
+      const kindLabel = node("label", `Part ${parts.children.length + 1} (required)`);
       kindLabel.htmlFor = kind.id;
       const seconds = node("input");
       seconds.id = `seconds-${id}`;
@@ -174,30 +275,30 @@ export function mountFocus(store) {
       seconds.min = "0";
       seconds.step = "any";
       seconds.required = true;
-      const secondsLabel = node("label", "Part duration (seconds, required)");
+      const secondsLabel = node("label", "Seconds (required)");
       secondsLabel.htmlFor = seconds.id;
       const group = node("input");
       group.id = `group-${id}`;
       group.value = `interruption-${id}`;
       group.hidden = true;
-      const groupLabel = node("label", "Interruption group name (required for interruption)");
+      const groupLabel = node("label", "Interruption group (joins repeated interruptions)");
       groupLabel.htmlFor = group.id;
       groupLabel.hidden = true;
       kind.addEventListener("change", () => {
         group.hidden = groupLabel.hidden = kind.value !== "interruption";
         group.required = kind.value === "interruption";
       });
-      const remove = node("button", "Remove interval part");
+      const remove = node("button", "Remove part");
       remove.type = "button";
       remove.addEventListener("click", () => { row.remove(); add.focus(); });
       row.append(kindLabel, kind, secondsLabel, seconds, groupLabel, group, remove);
       parts.append(row);
       return kind;
     }
-    const add = node("button", "Add interval part");
+    const add = node("button", "Add part");
     add.type = "button";
     add.addEventListener("click", () => addPart().focus());
-    const submit = node("button", "Confirm reconciliation");
+    const submit = node("button", "Confirm decision");
     submit.type = "submit";
     fields.append(add, submit);
     form.append(fields);
@@ -235,6 +336,7 @@ export function mountFocus(store) {
 
   async function load() {
     await act(() => controller.load(), false);
+    if (!clockTimer && !stopped) clockTimer = setInterval(updateClock, 250);
     if (!polling && !stopped) polling = setInterval(() => {
       // Observers read; only the accepted controller's watch loop writes evidence.
       if (!busy && !failed && state?.reservation?.controllerId !== controller.contextId) {
@@ -255,5 +357,5 @@ export function mountFocus(store) {
   }
   $("focus-recover").addEventListener("click", () => act(() => controller.recover({ confirmed: true })));
   $("focus-refresh").addEventListener("click", load);
-  return { setPlan, load, stop() { stopped = true; controller.stop(); clearInterval(polling); } };
+  return { setPlan, load, stop() { stopped = true; controller.stop(); clearInterval(polling); clearInterval(clockTimer); } };
 }

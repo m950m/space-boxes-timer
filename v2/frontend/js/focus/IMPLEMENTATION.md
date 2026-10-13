@@ -185,3 +185,20 @@ discarded. Whole-scope per-checkpoint validation and write cost grows with
 session length and is profiled separately. The Focus suites are not yet in CI
 (separately authorized workflow update). Next step: the owner's #28 acceptance
 review of PR #43.
+
+## UI delivery batch (local `feature/ws-a-focus-ui`, 2026-10-13)
+
+Owner-approved presentation-only batch over the PR #43 base (`bd21b2d`), sole
+writer for `app.js`/`index.html`/`planner.css` plus Focus UI files:
+[focus-view.js](focus-view.js) and [index.html](../../index.html) add a prominent
+live MM:SS countdown (`#focus-clock`, `role=timer`, `aria-live=off`) with a
+focused/of-planned caption, a completed/ended-early outcome banner, and grouped
+Start/Pause/Resume/End controls; [planner.css](../../css/planner.css) styles
+them and keeps a 320px single-column fit. The clock projects only the open
+interval of a Running reservation owned by this tab between confirmed
+checkpoints, capped at the target, and observers show confirmed facts only —
+it never writes evidence or changes credit/authority. Reconciliation keeps the
+same explicit decision model with plainer copy, local observed times and
+single-answer quick fills that only prefill the existing parts UI.
+`run-focus-ui-tests.py` extends coverage accordingly; no domain, controller,
+persistence or CI changes.
