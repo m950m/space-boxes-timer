@@ -1,5 +1,6 @@
 import { openPlanningStore } from "./persistence/planning-store.js";
 import { getTaskPlanningTotals } from "./domain/task-planning.js";
+import { mountFocus } from "./focus/focus-view.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("task-form");
@@ -15,6 +16,7 @@ const errorBox = $("planner-error");
 const viewDay = $("view-day");
 let store;
 let snapshot; // Projection of the last successful storage operation.
+let focusView;
 let editingTask;
 let busy = true;
 let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -356,6 +358,7 @@ function populateParents(task) {
 }
 
 function renderTasks() {
+  focusView?.setPlan(snapshot, viewDay.value);
   for (const classification of ["primary", "extra"]) {
     const container = $(`${classification}-tasks`);
     container.replaceChildren();
@@ -675,4 +678,16 @@ $("reload-plans").addEventListener("click", loadPlans);
 planningStore.then(async (opened) => {
   store = opened;
   await loadPlans();
-}).catch(() => { setBusy(false); });
+  // Independent status reporting keeps focus checkpoints from overwriting planner feedback.
+  const focusStore = await openPlanningStore();
+  focusView = mountFocus(focusStore);
+  focusView.setPlan(snapshot, viewDay.value);
+  await focusView.load();
+  window.addEventListener("pagehide", () => { focusView.stop(); focusStore.close(); });
+  window.addEventListener("pageshow", (event) => { if (event.persisted) location.reload(); });
+}).catch((error) => {
+  setBusy(false);
+  $("focus-status").textContent = "Error — saved focus could not be loaded.";
+  $("focus-error").textContent = error.message;
+  $("focus-panel").setAttribute("aria-busy", "false");
+});

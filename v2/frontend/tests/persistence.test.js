@@ -47,7 +47,7 @@ function requestResult(request) {
   });
 }
 async function rawWrite(run) {
-  const db = await requestResult(indexedDB.open(DATABASE_NAME, 1));
+  const db = await requestResult(indexedDB.open(DATABASE_NAME));
   try {
     await new Promise((resolve, reject) => {
       const tx = db.transaction(["metadata", "scopes", "tasks"], "readwrite");
@@ -299,7 +299,7 @@ async function afterReload() {
     const corrupt = { ...originalTask, sessionCount: 999 };
     await rawWrite((tx) => tx.objectStore("tasks").put(corrupt));
     await rejects(open, "TypeError");
-    const raw = await requestResult(indexedDB.open(DATABASE_NAME, 1));
+    const raw = await requestResult(indexedDB.open(DATABASE_NAME));
     equal(await requestResult(raw.transaction("tasks").objectStore("tasks").get([scopeId, originalTask.id])), corrupt, "Invalid record overwritten");
     raw.close();
     await rawWrite((tx) => {
@@ -317,12 +317,12 @@ async function afterReload() {
     equal(await store.load(), baseline, "Failed load destroyed existing records");
   });
   await test("version change closes old connection and newer schema is rejected non-destructively", async () => {
-    const upgrade = indexedDB.open(DATABASE_NAME, 2);
+    const upgrade = indexedDB.open(DATABASE_NAME, 3);
     const newer = await requestResult(upgrade);
     assert(states.includes("error"), "Version change was hidden");
     await rejects(() => store.load(), "InvalidStateError");
     await rejects(open, "VersionError");
-    assert(newer.version === 2 && newer.objectStoreNames.contains("tasks"), "Newer schema overwritten");
+    assert(newer.version === 3 && newer.objectStoreNames.contains("tasks"), "Newer schema overwritten");
     newer.close();
   });
   await reset();

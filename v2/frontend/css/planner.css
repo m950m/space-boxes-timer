@@ -17,6 +17,9 @@ button[type=submit] { background: #174a8b; color: white; }
 :disabled { cursor: default; opacity: .65; }
 #v2-startup-status { padding: .5rem 0; font-weight: 600; }
 #planner-error { color: #8b1622; white-space: pre-wrap; }
+#focus-error { color: #8b1622; white-space: pre-wrap; }
+#focus-panel { margin-block: 1.5rem; }
+#focus-heading:focus { outline: 3px solid #174a8b; outline-offset: 3px; }
 .focus-item { border-bottom: 1px solid #b4bdcb; padding-bottom: .5rem; }
 #focus-items { padding-left: 1.5rem; }
 @media (max-width: 45rem) { .layout { grid-template-columns: 1fr; } }
