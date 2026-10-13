@@ -38,6 +38,13 @@ button[type=submit] { background: #174a8b; color: white; }
 #focus-end:not(:disabled) { background: #8b1622; border-color: #8b1622; color: white; }
 #focus-reconciliation form { border-left: 4px solid #b06a2a; }
 .reconcile-quick { display: flex; flex-wrap: wrap; gap: .4rem; margin-block: .25rem; }
+#reports-panel { margin-block: 1.5rem; }
+#reports-error { color: #8b1622; }
+#reports-output dl { display: grid; grid-template-columns: auto 1fr; gap: .35rem 1.25rem; align-items: baseline; margin: .75rem 0; }
+#reports-output dt { font-weight: 600; }
+#reports-output dd { margin: 0; }
+#reports-output h3 { margin-block: 1rem .35rem; }
+#reports-output ul { margin: 0; padding-left: 1.25rem; }
 .part-row { display: flex; flex-wrap: wrap; gap: .4rem .75rem; align-items: end; border-bottom: 1px solid #b4bdcb; padding-block: .5rem; }
 .part-row label { margin-top: 0; }
 .part-row select { width: auto; flex: 0 1 11rem; }

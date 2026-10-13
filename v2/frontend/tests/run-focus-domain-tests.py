@@ -63,7 +63,7 @@ def main():
             if report.get("error"):
                 raise SystemExit(report["error"])
             count = sum(check.startswith("PASS ") for check in report["checks"])
-            print(f"PASS {count} real-Chrome domain checks; Focus + six planning regression suites")
+            print(f"PASS {count} real-Chrome domain checks; Focus, activity reports + six planning regression suites")
     finally:
         server.shutdown()
         server.server_close()

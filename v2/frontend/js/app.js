@@ -1,6 +1,7 @@
 import { openPlanningStore } from "./persistence/planning-store.js";
 import { getTaskPlanningTotals } from "./domain/task-planning.js";
 import { mountFocus } from "./focus/focus-view.js";
+import { mountReports } from "./reports/reports-view.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("task-form");
@@ -17,6 +18,7 @@ const viewDay = $("view-day");
 let store;
 let snapshot; // Projection of the last successful storage operation.
 let focusView;
+let reportsView;
 let editingTask;
 let busy = true;
 let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -683,6 +685,8 @@ planningStore.then(async (opened) => {
   focusView = mountFocus(focusStore);
   focusView.setPlan(snapshot, viewDay.value);
   await focusView.load();
+  reportsView = mountReports(focusStore);
+  await reportsView.refresh();
   window.addEventListener("pagehide", () => { focusView.stop(); focusStore.close(); });
   window.addEventListener("pageshow", (event) => { if (event.persisted) location.reload(); });
 }).catch((error) => {
