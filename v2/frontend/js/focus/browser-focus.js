@@ -64,6 +64,11 @@ export function createBrowserFocus(store, {
     const input = structuredClone(fields);
     return serial(async () => {
       if (!state) throw new DOMException("Load focus before acting.", "InvalidStateError");
+      // A scheduled checkpoint that runs after its session ended or moved control
+      // elsewhere has nothing to observe; only explicit user control reports stale authority.
+      if (type === "record" && state.reservation?.controllerId !== contextId) {
+        return structuredClone(state);
+      }
       const now = sample();
       const intent = { ...input, type, id: crypto.randomUUID(), contextId,
         at: now.at, expectedRevision: state.revision };
