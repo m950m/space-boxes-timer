@@ -132,6 +132,15 @@ jobs:
       - name: Run planner UI suite in real Chrome
         run: python v2/frontend/tests/run-planner-tests.py
 
+      - name: Run Focus domain suite in real Chrome
+        run: python v2/frontend/tests/run-focus-domain-tests.py
+
+      - name: Run Focus persistence suite in real Chrome
+        run: python v2/frontend/tests/run-focus-persistence-tests.py
+
+      - name: Run Focus UI suite in real Chrome
+        run: python v2/frontend/tests/run-focus-ui-tests.py
+
   django-smoke:
     name: Django smoke tests (Python 3.14)
     runs-on: ubuntu-26.04
