@@ -103,6 +103,12 @@ jobs:
           gjs -m v2/frontend/tests/task-hierarchy.test.js
           gjs -m v2/frontend/tests/task-resources.test.js
 
+      - name: Run the connected-payload GJS suite
+        run: gjs -m v2/frontend/tests/connected-payload.test.js
+
+      - name: Run the connected-focus-mirror GJS suite
+        run: gjs -m v2/frontend/tests/connected-focus-mirror.test.js
+
   chrome-browser:
     name: Real-Chrome persistence and planner suites
     runs-on: ubuntu-26.04
@@ -182,3 +188,62 @@ jobs:
 
       - name: Django smoke tests
         run: v2/.venv/bin/python v2/backend/manage.py test config
+
+  django-connected:
+    name: Connected backend tests (Python 3.14, PostgreSQL)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: spaceboxes
+          POSTGRES_PASSWORD: spaceboxes
+          POSTGRES_DB: space_boxes_v2
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U spaceboxes"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      SPACE_BOXES_DB_HOST: 127.0.0.1
+      SPACE_BOXES_DB_PORT: 5432
+      SPACE_BOXES_DB_USER: spaceboxes
+      SPACE_BOXES_DB_PASSWORD: spaceboxes
+      SPACE_BOXES_DB_NAME: space_boxes_v2
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Create venv and install pinned dependencies
+        run: |
+          set -euo pipefail
+          python -m venv v2/.venv
+          v2/.venv/bin/python -m pip install -r v2/requirements.txt
+
+      - name: Verify PostgreSQL is reachable
+        run: |
+          set -euo pipefail
+          v2/.venv/bin/python - <<'EOF'
+          import psycopg
+          with psycopg.connect("host=127.0.0.1 port=5432 user=spaceboxes password=spaceboxes dbname=space_boxes_v2") as conn:
+              print("PostgreSQL:", conn.execute("select version();").fetchone()[0])
+          EOF
+
+      - name: Run migrations against PostgreSQL
+        run: v2/.venv/bin/python v2/backend/manage.py migrate --no-input
+
+      - name: Run the connected backend test suite
+        run: v2/.venv/bin/python v2/backend/manage.py test accounts productivity

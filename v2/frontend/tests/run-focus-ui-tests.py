@@ -258,7 +258,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/"
     try:
-        with tempfile.TemporaryDirectory(prefix="v2-focus-ui-") as profile:
+        with tempfile.TemporaryDirectory(prefix="v2-focus-ui-", ignore_cleanup_errors=True) as profile:
             for phase in ("suite", "restart-paused", "restart-running"):
                 with helpers.browser_session(browser, profile) as client:
                     if phase == "suite":

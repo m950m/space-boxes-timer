@@ -667,7 +667,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         url = f"http://127.0.0.1:{server.server_port}/"
-        with tempfile.TemporaryDirectory(prefix="v2-planner-browser-") as profile:
+        with tempfile.TemporaryDirectory(prefix="v2-planner-browser-", ignore_cleanup_errors=True) as profile:
             with browser_session(browser, profile) as client:
                 expected = suite(client, url)
             with browser_session(browser, profile) as client:

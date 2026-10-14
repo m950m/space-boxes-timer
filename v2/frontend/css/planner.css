@@ -126,6 +126,12 @@ summary { width: fit-content; max-width: 100%; min-height: 2.75rem; padding: .5r
   .resource-field { flex-basis: 100%; min-width: 0; }
   .focus-controls button { flex: 1 1 auto; }
 }
+/* Account panel: additive, same visual language as the rest of the planner. */
+#account-panel { margin-block: 1.5rem; }
+#account-connection-state { font-weight: 650; }
+#account-signed-out input, #account-delete-section input { max-width: 22rem; display: block; }
+#account-signed-out label { margin-top: .5rem; }
+#account-export { display: inline-block; margin: .35rem .2rem .35rem 0; }
 /* No decorative motion; focus states remain equivalent with reduced motion. */
 @media (forced-colors: active) {
   #focus-progress { accent-color: Highlight; }

@@ -40,7 +40,7 @@ def main():
     )
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        with tempfile.TemporaryDirectory(prefix="v2-focus-domain-") as profile:
+        with tempfile.TemporaryDirectory(prefix="v2-focus-domain-", ignore_cleanup_errors=True) as profile:
             with tempfile.TemporaryFile(mode="w+") as log:
                 command = [browser, "--headless", "--disable-gpu", "--no-first-run",
                            "--no-default-browser-check", f"--user-data-dir={profile}",

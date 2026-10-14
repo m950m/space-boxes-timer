@@ -15,6 +15,7 @@
         <a href="#plans-heading">Planner</a>
         <a href="#focus-heading">Focus</a>
         <a href="#reports-heading">Activity</a>
+        <a href="#account-heading">Account</a>
       </nav>
     </header>
     <main id="workspace" tabindex="-1">
@@ -29,6 +30,34 @@
         <p id="timezone-context"></p>
         <button id="reload-plans" type="button" disabled>Reload saved plans (discard edits)</button>
       </div>
+      <section id="account-panel" class="panel" aria-labelledby="account-heading">
+        <p class="eyebrow">Optional connected saving</p>
+        <h2 id="account-heading" tabindex="-1">Account</h2>
+        <p id="account-connection-state" role="status" aria-live="polite" aria-atomic="true">Signed out</p>
+        <p id="account-sync-status" aria-live="polite" aria-atomic="true"></p>
+        <p id="account-error" role="alert" aria-atomic="true"></p>
+        <div id="account-signed-out">
+          <p>An optional account saves your history beyond this browser. Local use never needs one.</p>
+          <label for="account-email">Email</label>
+          <input id="account-email" type="email" autocomplete="email" required>
+          <label for="account-password">Password</label>
+          <input id="account-password" type="password" autocomplete="current-password" required>
+          <button id="account-register" type="button">Create account</button>
+          <button id="account-login" type="button">Sign in</button>
+        </div>
+        <div id="account-signed-in" hidden>
+          <p>Signed in as <span id="account-identity"></span></p>
+          <button id="account-connect" type="button">Connect local history</button>
+          <button id="account-sync" type="button" hidden>Sync now</button>
+          <a id="account-export" href="/api/v2/account/export" hidden>Export my data (JSON)</a>
+          <div id="account-delete-section">
+            <label for="account-delete-password">Current password</label>
+            <input id="account-delete-password" type="password" autocomplete="current-password" hidden>
+            <button id="account-delete" type="button" hidden>Delete account…</button>
+          </div>
+          <button id="account-signout" type="button">Sign out</button>
+        </div>
+      </section>
       <section id="focus-panel" class="panel" aria-labelledby="focus-heading" aria-busy="true">
         <p class="eyebrow">One session at a time</p>
         <h2 id="focus-heading" tabindex="-1">Focus</h2>
