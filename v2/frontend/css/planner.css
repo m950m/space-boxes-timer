@@ -80,3 +80,11 @@ article:focus-visible, article:focus { outline: 3px solid #174a8b; outline-offse
   .part-row select, .part-row input { width: 100%; flex-basis: 100%; min-width: 0; }
   .focus-controls button { flex: 1 1 auto; }
 }
+/* Account panel: additive, same visual language as the rest of the planner. */
+#account-panel { margin-block: 1.5rem; padding: 1rem; background: white; border: 1px solid #b4bdcb; border-radius: .4rem; }
+#account-panel h2 { margin-top: 0; }
+#account-connection-state { font-weight: 600; }
+#account-error { color: #8b1622; white-space: pre-wrap; }
+#account-signed-out input, #account-delete-section input { max-width: 22rem; display: block; }
+#account-signed-out label { margin-top: .5rem; }
+#account-export { display: inline-block; margin: .35rem .2rem .35rem 0; }

@@ -2,6 +2,7 @@ import { openPlanningStore } from "./persistence/planning-store.js";
 import { getTaskPlanningTotals } from "./domain/task-planning.js";
 import { mountFocus } from "./focus/focus-view.js";
 import { mountReports } from "./reports/reports-view.js";
+import { mountAccountPanel } from "./account-view.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("task-form");
@@ -18,6 +19,7 @@ const viewDay = $("view-day");
 let store;
 let snapshot; // Projection of the last successful storage operation.
 let focusView;
+let accountPanel;
 let reportsView;
 let editingTask;
 let busy = true;
@@ -360,6 +362,7 @@ function populateParents(task) {
 }
 
 function renderTasks() {
+  accountPanel?.update(snapshot);
   focusView?.setPlan(snapshot, viewDay.value);
   for (const classification of ["primary", "extra"]) {
     const container = $(`${classification}-tasks`);
@@ -668,6 +671,7 @@ async function loadPlans() {
   clearError();
   try {
     snapshot = await store.load();
+    accountPanel?.update(snapshot);
     renderTasks();
     resetEditor();
   } catch (error) {
@@ -679,6 +683,7 @@ async function loadPlans() {
 $("reload-plans").addEventListener("click", loadPlans);
 planningStore.then(async (opened) => {
   store = opened;
+  accountPanel = mountAccountPanel({ planningStore });
   await loadPlans();
   // Independent status reporting keeps focus checkpoints from overwriting planner feedback.
   const focusStore = await openPlanningStore();

@@ -1,9 +1,11 @@
-# V2 local Planner and Focus
+# V2 local Planner and Focus, with an optional connected account
 
 V2 provides an isolated Vanilla JavaScript local Planner and Focus panel with a
 local Django project. Plan tasks, run focus sessions and recover saved sessions
-without an account, using native IndexedDB. There is no backend database or
-backend migration setup. Existing V1 files and storage keys are unchanged.
+without an account, using native IndexedDB. An optional connected account adds
+server-side PostgreSQL persistence: explicit non-destructive connection of the
+local history, synchronization, machine-readable export and password-confirmed
+account deletion. Existing V1 files and storage keys are unchanged.
 
 ## Setup
 
@@ -15,9 +17,26 @@ python3 -m venv v2/.venv
 v2/.venv/bin/python -m pip install -r v2/requirements.txt
 ```
 
-The sole direct dependency is pinned to Django 5.2.18 (5.2 LTS); pip resolves its
-required transitive dependencies. Installation requires package-registry access.
-There is no Node/npm dependency or frontend build step.
+Dependencies are pinned: Django 5.2.18 (5.2 LTS) and psycopg 3.2.13 (PostgreSQL
+driver); pip resolves their transitive dependencies. Installation requires
+package-registry access. There is no Node/npm dependency or frontend build step.
+
+Connected features need a reachable PostgreSQL server configured through
+environment variables (defaults shown):
+
+```bash
+SPACE_BOXES_DB_NAME=space_boxes_v2
+SPACE_BOXES_DB_USER=spaceboxes
+SPACE_BOXES_DB_PASSWORD=
+SPACE_BOXES_DB_HOST=127.0.0.1
+SPACE_BOXES_DB_PORT=5434
+```
+
+Create the schema once per database:
+
+```bash
+v2/.venv/bin/python v2/backend/manage.py migrate
+```
 
 ## Run through Django
 
@@ -26,8 +45,7 @@ v2/.venv/bin/python v2/backend/manage.py runserver 127.0.0.1:8000
 ```
 
 Open <http://127.0.0.1:8000/>. Django serves the HTML and JavaScript on the same
-origin. No database setup or `migrate` command is needed.
-If port 8000 is occupied, use `127.0.0.1:8001` in the command and open
+origin. If port 8000 is occupied, use `127.0.0.1:8001` in the command and open
 <http://127.0.0.1:8001/> instead.
 
 ## Run the frontend independently
@@ -48,15 +66,20 @@ with Ctrl+C.
 v2/.venv/bin/python -m pip check
 v2/.venv/bin/python v2/backend/manage.py check
 v2/.venv/bin/python v2/backend/manage.py test config
+v2/.venv/bin/python v2/backend/manage.py test accounts productivity  # needs PostgreSQL
 git diff --check
 git diff --exit-code HEAD -- . ':(exclude)v2/**'
 git status --short
 ```
 
-The built-in Django runner uses `SimpleTestCase` without database setup. The
-tests check the frontend document and asset references, JavaScript/CSS delivery,
-404 responses for unknown routes, and disabled asset serving outside development
-mode. They do not execute JavaScript.
+The `config` smoke tests use `SimpleTestCase` without database setup; they check
+the frontend document and asset references, JavaScript/CSS delivery, 404
+responses for unknown routes, and disabled asset serving outside development
+mode. They do not execute JavaScript. The `accounts` and `productivity` suites
+(73 tests) run against PostgreSQL through the `SPACE_BOXES_DB_*` settings above
+and cover models/constraints, throttles, auth and recovery, synchronization
+semantics and isolation, focus authority including concurrency, HTTP boundaries,
+the narrow admin, export/deletion and account-scoped permissions.
 
 For each startup mode, open its URL in a modern browser and confirm the ready
 message, successful JavaScript loading in the Network panel, and no console
@@ -103,14 +126,16 @@ python3 v2/frontend/tests/run-focus-ui-tests.py
 | `run-focus-ui-tests.py` | Mounted Start/Pause/Resume/End, recovery, reconciliation, outcomes/history, keyboard/status, tabs, reload and process restart |
 
 [`V2 CI`](../.github/workflows/v2-ci.yml) runs for pull requests targeting `v2`
-and pushes to `v2`, on `ubuntu-26.04`. Its three jobs run the six GJS suites and
-diff hygiene; all five browser runners above on real Chrome with Python 3.14;
-and the Django `pip check`, system check and four HTTP smoke tests shown in
-**Verify**. Diff hygiene rejects changes outside `v2/`, `_docs/` and `.github/`
-and checks whitespace. Missing GJS/browser prerequisites fail rather than skip.
-The workflow uses read-only repository permissions, job timeouts and no secrets
-or deployment steps. Branch protection and required-check settings are separate
-owner decisions.
+and pushes to `v2`, on `ubuntu-26.04`. Its four jobs run the six GJS suites plus
+the connected-payload suite and diff hygiene; all five browser runners above on
+real Chrome with Python 3.14; the Django `pip check`, system check and four HTTP
+smoke tests shown in **Verify**; and the connected backend suite against a
+PostgreSQL 18 service container (migrations included). Diff hygiene rejects
+changes outside `v2/`, `_docs/` and `.github/` and checks whitespace. Missing
+GJS/browser/PostgreSQL prerequisites fail rather than skip. The workflow uses
+read-only repository permissions, job timeouts and no secrets or deployment
+steps. Branch protection and required-check settings are separate owner
+decisions.
 
 Historical hosted evidence is recorded in [Issue #40's handoff](https://github.com/m950m/space-boxes-timer/issues/40#issuecomment-6155809486):
 PR run `38365334807` passed all three Focus steps (119 domain, 47 persistence,
@@ -637,21 +662,85 @@ navigation, domain exception/blocking behavior, storage, backend or dependency.
 ## Limits
 
 Settings, the public development-only secret, and Django static serving are for
-local development only. The frontend uses IndexedDB for plans, session evidence
-and reservations and does not import V1 modules or access V1 storage.
-Use the same hostname, port and browser profile to return to saved work: Django
-and the standalone server use different origins and do not share plans or Focus
-authority. Separate profiles/devices have independent local reservations; no
-cross-device exclusivity, account recovery or synchronization is implemented.
-Storage denial, quota failures and corrupt/unsupported records are surfaced;
-there is no silent fallback or destructive automatic reset. Clearing site data,
-profile loss or browser eviction can lose local plans/history. Browser-local
-storage is not a backup, even when a write has been confirmed.
+local development only. The frontend uses IndexedDB for local plans, session
+evidence and reservations and does not import V1 modules or access V1 storage.
+Use the same hostname, port and browser profile to return to local saved work:
+Django and the standalone server use different origins and do not share local
+plans or Focus authority. Without connecting an account, separate
+profiles/devices have independent local reservations. Signed-in cross-device
+behavior is described in the connected-account section above. Storage denial,
+quota failures and corrupt/unsupported records are surfaced; there is no silent
+fallback or destructive automatic reset. Clearing site data, profile loss or
+browser eviction can lose local plans/history that was never connected.
+Browser-local storage is not a backup, even when a write has been confirmed.
 
-Authentication, PostgreSQL/account persistence, export/deletion UI, extension
-blocking, final artwork, Docker and production configuration remain future work.
-Approved [product requirements](../_docs/product/v2-prd.md),
+## Optional connected account (connected product slice)
+
+The **Account** panel is additive; signed-out local use behaves exactly as
+before. With an account you can register/sign in, connect this browser's local
+history, synchronize, export data and delete the account.
+
+Connection is explicit and non-destructive. **Connect local history** uploads
+the local plan days, tasks (with their plan items, breaks, resources and
+decisions) and ended focus sessions (with evidence, authority history and
+reconciliation decisions) to the account scope. Every record keeps its
+client-generated identity, so retries and re-connects are duplicate-free; the
+upload preserves the originating local scope as provenance. An active local
+focus session blocks connection with a visible reason: connecting an active
+session is deferred, and the server accepts no open evidence through sync.
+Nothing in local storage is modified or deleted by connecting.
+
+**Sync now** uploads local work created since the last accepted
+synchronization and downloads account tasks that are missing locally. Plan
+edits carry the base revision they were made against; a stale edit is reported
+as a conflict and the server's canonical record is kept — there is no silent
+last-write-wins in either direction. Rejections and conflicts are listed in
+the panel status, never claimed as saved. Durable acknowledgement lives in the
+browser's IndexedDB metadata, bound to the account scope id, so acknowledged
+state survives reloads and cannot be relabelled onto a different account.
+
+The server enforces account-scoped authorization on every endpoint: records
+are always resolved through the authenticated account's ownership scope, and
+cross-account references are treated as nonexistent. Administration is narrow
+(account status and support actions only); productivity models are not
+registered in the admin, so administrators have no default route to task
+content, notes or history (FR-ADMIN-001).
+
+Security model (ADR-004, OD-011): opaque server-side sessions in a
+Secure/HttpOnly `SameSite=Lax` cookie ( Secure only over HTTPS), CSRF
+protection on every mutating request, session-key rotation at login, generic
+credential/recovery responses, a failed-login throttle, and single-use
+60-minute recovery codes delivered by email with per-account (5/hour) and
+per-IP (10/hour) request limits and per-account confirmation limits
+(10/hour). A password change revokes every session. Account deletion requires
+the current password, removes the canonical productivity data and the account,
+and revokes sessions; local browser data is intentionally untouched. No
+backup-retention or external-copy promise is made.
+
+Exports (`Export my data (JSON)`) are machine-readable documents preserving
+plans, activity, uncertainty, provenance and relationships, usable outside the
+product (OD-016; the format is `space-boxes-v2-export/1`).
+
+Implemented boundaries worth knowing:
+
+- Connected focus control is server-side and tested (single reservation per
+  account, stale revision/controller rejection, confirmed takeover,
+  auto-completion). The live focus panel continues to run on the local engine
+  and uploads ended history; wiring the panel's Start/Pause/Resume/End and
+  takeover UX to server acceptance is the next integration slice at the focus
+  UI boundary.
+- Cross-device synchronization covers tasks (download into the planner) and
+  ended history; downloading another device's focus history into the local
+  focus panel is not implemented yet.
+- Report delivery preferences are stored but no delivery scheduler, email
+  delivery or extension/blocking is implemented (OD-020 keeps the extension
+  after core V2).
+
+Settings, the public development-only secret, and Django static serving remain
+local-development configuration. The connected deployment story (HTTPS
+termination, SMTP, production secrets, Docker) remains owner-gated future
+work. Approved [product requirements](../_docs/product/v2-prd.md),
 [owner decisions](../_docs/product/owner-decisions.md),
 [architecture](../_docs/architecture/architecture.md) and
 [data model](../_docs/data/v2-data-model.md) describe broader approved scope;
-they do not imply those capabilities are implemented here.
+they do not imply unimplemented capabilities are available.
