@@ -122,6 +122,7 @@ python3 v2/frontend/tests/run-planner-tests.py
 python3 v2/frontend/tests/run-focus-domain-tests.py
 python3 v2/frontend/tests/run-focus-persistence-tests.py
 python3 v2/frontend/tests/run-focus-ui-tests.py
+python3 v2/frontend/tests/run-connected-sync-tests.py
 ```
 
 | Runner | Coverage |
@@ -131,6 +132,7 @@ python3 v2/frontend/tests/run-focus-ui-tests.py
 | `run-focus-domain-tests.py` | Focus lifecycle/evidence/reconciliation plus all six planning domain suites |
 | `run-focus-persistence-tests.py` | Planning persistence regressions, schema upgrade, serialized authority across tabs, clock/callback discontinuities, Running/Paused reload and process restart |
 | `run-focus-ui-tests.py` | Mounted Start/Pause/Resume/End, recovery, reconciliation, outcomes/history, keyboard/status, tabs, reload and process restart |
+| `run-connected-sync-tests.py` | Connected task sync against a stubbed fetch boundary with real IndexedDB: connect upload, reload recovery, edit detection, lost-response retry as duplicate, conflict surfacing and re-resolution attempts |
 
 [`V2 CI`](../.github/workflows/v2-ci.yml) runs for pull requests targeting `v2`
 and pushes to `v2`, on `ubuntu-26.04`. Its four jobs run the six GJS suites plus
@@ -704,12 +706,19 @@ focus session blocks connection with a visible reason: connecting an active
 session is deferred, and the server accepts no open evidence through sync.
 Nothing in local storage is modified or deleted by connecting.
 
-**Sync now** uploads local work created since the last accepted
-synchronization and downloads account tasks that are missing locally. Plan
-edits carry the base revision they were made against; a stale edit is reported
-as a conflict and the server's canonical record is kept — there is no silent
-last-write-wins in either direction. Rejections and conflicts are listed in
-the panel status, never claimed as saved. Durable acknowledgement lives in the
+**Sync now** uploads local work the account has not acknowledged yet — new
+records and, with the same guarantees, **edits to previously synchronized
+tasks** (detected against a durable per-task content baseline, so server
+bookkeeping or another device's revision bump never fakes a local change).
+Every task op carries the base revision it was made against: a stale edit is
+reported as a conflict and stays unresolved — local changes are kept, the
+server record is not overwritten, and the next synchronization retries until
+you resolve it. There is no silent last-write-wins in either direction.
+Retries are idempotent: a response lost after the server applied an upload is
+re-sent with the same base and comes back as a duplicate, never a second
+revision, and identical no-op pushes do not enter the change feed.
+Rejections and conflicts are listed in the panel status, never claimed as
+saved. Durable acknowledgement (including the content baseline) lives in the
 browser's IndexedDB metadata, bound to the account scope id, so acknowledged
 state survives reloads and cannot be relabelled onto a different account.
 

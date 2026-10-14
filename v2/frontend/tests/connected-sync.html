@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Connected task sync regression tests</title>
+<body><pre id="results">Running…</pre>
+<script type="module">
+  // Fetch is stubbed at the network boundary only: the real connection.js,
+  // payload.js and planning-store.js run unmodified, with real IndexedDB and
+  // a real page reload. The stub answers /api/* per scenario and passes
+  // everything else (the results POST) through.
+  const realFetch = window.fetch.bind(window);
+  let respond = async () => ({ status: 500, payload: { error: { code: "stub", message: "no behavior" } } });
+  const pushes = [];
+  window.fetch = async (input, init = {}) => {
+    const path = typeof input === "string" ? input : input.url;
+    const method = (init.method ?? "GET").toUpperCase();
+    if (!path.startsWith("/api/")) return realFetch(input, init);
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    if (method === "POST" && path === "/api/v2/sync/push") pushes.push(body.ops);
+    // Scenario handlers match the route without query strings.
+    const outcome = await respond(method, path.split("?")[0], body);
+    if (outcome.networkError) throw new TypeError("Failed to fetch");
+    const status = outcome.status ?? 200;
+    const text = JSON.stringify(outcome.payload ?? {});
+    return {
+      ok: status >= 200 && status < 300, status,
+      headers: { get: (name) => name.toLowerCase() === "content-type" ? "application/json" : null },
+      text: async () => text, json: async () => JSON.parse(text),
+    };
+  };
+
+  const checks = [];
+  const check = (name, ok, detail) => checks.push(`${ok ? "PASS" : "FAIL"} ${name}${ok || detail === undefined ? "" : `: ${detail}`}`);
+  const assert = (name, ok, detail) => { check(name, ok, detail); if (!ok) throw new Error(name); };
+  // Any failure outside the scenario try-blocks must still reach the runner.
+  let reported = false;
+  const reportCrash = (error) => {
+    if (reported) return;
+    reported = true;
+    document.getElementById("results").textContent = checks.join("\n") + `\nFAIL ${error}`;
+    realFetch("/results", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checks, error: describe(error) }) });
+  };
+  const describe = (error) => error instanceof Error ? (error.stack ?? String(error))
+    : JSON.stringify(error) ?? String(error);
+  window.addEventListener("error", (event) => reportCrash(describe(event.error ?? event.message)));
+  window.addEventListener("unhandledrejection", (event) => reportCrash(describe(event.reason)));
+  const account = { email: "sync-regression@example.com", scopeId: "account-scope-1" };
+  const DAY = "2026-10-15";
+
+  function pullFeed(scopeRevision) {
+    return { scopeRevision, focusRevision: 0, ownershipScopeId: account.scopeId,
+      planDays: [], tasks: [], sessions: [], evidence: [], decisions: [],
+      authorityChanges: [], breaks: [], exposure: [], config: null, prefs: null,
+      reservation: null };
+  }
+
+  function fakeResult(index, status, record) {
+    return { index, status, ...(record ? { record } : {}) };
+  }
+
+  const { Connection } = await import("../js/connected/connection.js");
+  const { openPlanningStore } = await import("../js/persistence/planning-store.js");
+
+  const store = await openPlanningStore();
+  const initial = await store.load(store.localScopeId);
+  const focusState = () => ({ ownershipScopeId: store.localScopeId, revision: 0,
+    reservation: null, sessions: [], evidence: [], reconciliations: [], authorityChanges: [] });
+  const statuses = [];
+  const connection = new Connection({ onStatus: (state, detail) => statuses.push([state, detail]) });
+  const lastStatus = () => statuses.at(-1)?.join(" ") ?? "";
+
+  if (!sessionStorage.getItem("connected-sync-phase")) {
+    // Phase 1: connect this browser's local history, then reload for recovery.
+    const task = { id: crypto.randomUUID(), ownershipScopeId: store.localScopeId,
+      planDayId: DAY, title: "Sync regression task", classification: "extra",
+      plannedStart: { time: "09:30", timezone: "UTC" },
+      sessionPlan: [{ id: crypto.randomUUID(), activeMinutes: 25 }] };
+    const snapshot = await store.commit(store.localScopeId, initial.revision,
+      [{ type: "create", task }]);
+    respond = async (method, path) => {
+      if (path === "/api/v2/csrf") return { payload: { csrfToken: "stub-token" } };
+      if (path === "/api/v2/accounts/register") return { payload: { account } };
+      if (path === "/api/v2/sync/push") {
+        return { payload: { scopeRevision: 2, results: pushes.at(-1).map((op, index) =>
+          op.kind === "task" ? fakeResult(index, "accepted",
+            { id: op.record.id, recordRevision: 1 }) : fakeResult(index, "accepted")) } };
+      }
+      if (path.startsWith("/api/v2/sync/pull")) return { payload: pullFeed(2) };
+      return { status: 404, payload: { error: { code: "stub", message: path } } };
+    };
+    await connection.register(account.email, "long-and-uncommon-42");
+    await connection.connect({ snapshot, focusState: focusState() });
+    const connectOps = pushes.at(-1).filter((op) => op.kind === "task");
+    assert("connect uploads the local task with baseRevision 0",
+      connectOps.length === 1 && connectOps[0].baseRevision === 0
+      && connectOps[0].record.id === task.id,
+      JSON.stringify(connectOps));
+    assert("connect flattens plannedStart to the wire string",
+      connectOps[0]?.record.plannedStart === "09:30", connectOps[0]?.record.plannedStart);
+    assert("connect reports connected status", lastStatus().startsWith("connected"), lastStatus());
+    sessionStorage.setItem("connected-sync-phase", "2");
+    sessionStorage.setItem("connected-sync-task", task.id);
+    sessionStorage.setItem("connected-sync-checks", JSON.stringify(checks));
+    sessionStorage.setItem("connected-sync-ops", JSON.stringify(pushes.flat().length));
+    location.reload();
+  } else {
+    // Phase 2, after a real page reload: recovery, edit upload, retry, conflict.
+    checks.push(...JSON.parse(sessionStorage.getItem("connected-sync-checks")));
+    sessionStorage.removeItem("connected-sync-checks");
+    const taskId = sessionStorage.getItem("connected-sync-task");
+    let error = null;
+    try {
+      // Default phase-2 behavior until a scenario overrides it; /me must
+      // answer before the durable acknowledgement can be restored.
+      respond = async (method, path) => {
+        if (path === "/api/v2/csrf") return { payload: { csrfToken: "stub-token" } };
+        if (path === "/api/v2/accounts/me") return { payload: { account } };
+        return { status: 404, payload: { error: { code: "stub", message: path } } };
+      };
+      const taskOps = () => pushes.flat().filter((op) => op.kind === "task" && op.record.id === taskId);
+      const lastOp = () => taskOps().at(-1);
+      const respondPush = (status, recordRevision, scopeRevision) => async (method, path) => {
+        if (path === "/api/v2/csrf") return { payload: { csrfToken: "stub-token" } };
+        if (path === "/api/v2/sync/pull") return { payload: pullFeed(scopeRevision) };
+        if (path === "/api/v2/sync/push") {
+          return { payload: { scopeRevision, results: pushes.at(-1).map((op, index) =>
+            fakeResult(index, status, op.kind === "task"
+              ? { id: op.record.id, recordRevision } : undefined)) } };
+        }
+        return { status: 404, payload: { error: { code: "stub", message: path } } };
+      };
+
+      await connection.init();
+      await connection.loadAck(store.localScopeId);
+      assert("durable acknowledgement restores connected state after reload",
+        connection.connected === true, `connected=${connection.connected}`);
+
+      respond = respondPush("duplicate", 9, 9);
+      const before = await store.load(store.localScopeId);
+      await connection.syncNow({ store, snapshot: before, focusState: focusState() });
+      assert("unchanged tasks are not re-uploaded after reload", taskOps().length === 0,
+        `${taskOps().length} task ops`);
+
+      const edited = await store.commit(store.localScopeId, before.revision,
+        [{ type: "edit", taskId, changes: { title: "Edited locally" } }]);
+      respond = respondPush("accepted", 10, 10);
+      await connection.syncNow({ store, snapshot: edited, focusState: focusState() });
+      assert("a local edit uploads one task op with the acknowledged baseRevision",
+        taskOps().length === 1 && lastOp().baseRevision === 1
+        && lastOp().record.title === "Edited locally",
+        JSON.stringify(lastOp()));
+      await connection.syncNow({ store, snapshot: edited, focusState: focusState() });
+      assert("the accepted edit is not re-uploaded", taskOps().length === 1,
+        `${taskOps().length} task ops`);
+
+      // Lost response: the server applied the edit but the client never saw
+      // the answer. The retry sends the stale base and identical content.
+      const lostAck = await store.commit(store.localScopeId, edited.revision,
+        [{ type: "edit", taskId, changes: { title: "Edited twice" } }]);
+      respond = async (method, path) => {
+        if (path === "/api/v2/csrf") return { payload: { csrfToken: "stub-token" } };
+        if (path === "/api/v2/sync/pull") return { payload: pullFeed(11) };
+        if (path === "/api/v2/sync/push") return { networkError: true };
+        return { status: 404, payload: { error: { code: "stub", message: path } } };
+      };
+      await connection.syncNow({ store, snapshot: lostAck, focusState: focusState() })
+        .catch(() => {});
+      const afterFailure = await store.load(store.localScopeId);
+      assert("a failed upload preserves the local change",
+        afterFailure.tasks.find((task) => task.id === taskId)?.title === "Edited twice",
+        afterFailure.tasks.find((task) => task.id === taskId)?.title);
+      assert("a failed upload keeps the acknowledgement stale",
+        taskOps().length === 2 && lastOp().baseRevision === 10,
+        JSON.stringify(lastOp()));
+      respond = respondPush("duplicate", 11, 11);
+      await connection.syncNow({ store, snapshot: lostAck, focusState: focusState() });
+      assert("the retry re-sends the stale baseRevision and resolves as duplicate",
+        taskOps().length === 3 && lastOp().baseRevision === 10
+        && lastOp().record.title === "Edited twice",
+        JSON.stringify(lastOp()));
+      await connection.syncNow({ store, snapshot: lostAck, focusState: focusState() });
+      assert("the duplicate response updates the acknowledgement", taskOps().length === 3,
+        `${taskOps().length} task ops`);
+
+      // Genuine conflict: another device advanced the server record.
+      const conflicting = await store.commit(store.localScopeId, lostAck.revision,
+        [{ type: "edit", taskId, changes: { title: "Edited third" } }]);
+      respond = respondPush("conflict", 12, 12);
+      await connection.syncNow({ store, snapshot: conflicting, focusState: focusState() });
+      assert("a conflict is reported, never claimed as synced",
+        statuses.some(([state, detail]) => state === "sync-error" && (detail ?? "").includes("conflict")),
+        lastStatus());
+      const afterConflict = await store.load(store.localScopeId);
+      assert("a conflict keeps the local change",
+        afterConflict.tasks.find((task) => task.id === taskId)?.title === "Edited third",
+        afterConflict.tasks.find((task) => task.id === taskId)?.title);
+      await connection.syncNow({ store, snapshot: conflicting, focusState: focusState() });
+      assert("an unresolved conflict retries with the same acknowledged base",
+        taskOps().length === 5 && lastOp().baseRevision === 11
+        && lastOp().record.title === "Edited third",
+        JSON.stringify(lastOp()));
+    } catch (caught) { error = describe(caught); }
+    reported = true;
+    sessionStorage.clear();
+    document.getElementById("results").textContent = checks.join("\n") + (error ? `\nFAIL ${error}` : "\nPASS");
+    await fetch("/results", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checks, error }) });
+  }
+</script>
+</body>
+</html>

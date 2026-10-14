@@ -47,7 +47,12 @@ def focus_item_payload(item):
 
 
 def task_payload(task):
-    items = [focus_item_payload(i) for i in task.focus_items.all()]
+    # Plan order is semantic (breaks reference adjacent items), so the current
+    # items are returned by stored position, not insertion identity.
+    items = sorted(
+        (focus_item_payload(i) for i in task.focus_items.all()),
+        key=lambda item: (item["retired"], item["position"], item["id"]),
+    )
     session_plan = [
         {"id": i["id"], "activeMinutes": i["activeMinutes"]}
         for i in items if not i["retired"]

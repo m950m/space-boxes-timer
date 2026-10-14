@@ -1,4 +1,4 @@
-import { buildConnectOps, buildSessionOps, planDayIds, wirePlannedStart } from "../js/connected/payload.js";
+import { buildConnectOps, buildSessionOps, planDayIds, taskContentHash, wirePlannedStart, wireTaskRecord } from "../js/connected/payload.js";
 
 let passed = 0;
 
@@ -125,6 +125,46 @@ test("task ops flatten the local plannedStart object to the wire string", () => 
   const stringForm = task("t2", { plannedStart: "08:30" });
   equal(wirePlannedStart(stringForm.plannedStart), "08:30");
   equal(wirePlannedStart(undefined), undefined, "missing values pass through to server validation");
+});
+
+test("taskContentHash detects every applied planning change", () => {
+  const base = task("t1", { sessionPlan: [{ id: "i1", activeMinutes: 25 }, { id: "i2", activeMinutes: 15 }] });
+  const reference = taskContentHash(base);
+  equal(taskContentHash({ ...base }), reference, "equal content hashes equal");
+  equal(taskContentHash({ ...base, recordRevision: 7, revision: 99, originScopeKey: "other" }),
+    reference, "server bookkeeping fields never fake a local change");
+  equal(taskContentHash({ ...base, plannedStart: { time: "09:00", timezone: "UTC" } }),
+    reference, "object and string plannedStart forms are the same content");
+  const changes = [
+    ["title", "Edited title"],
+    ["note", "annotated"],
+    ["completedAt", 1760009999000],
+    ["cancelledAt", 1760009999000],
+    ["parentTaskId", "parent-1"],
+    ["sessionPlan", [{ id: "i2", activeMinutes: 15 }, { id: "i1", activeMinutes: 25 }]],
+    ["sessionPlan", [{ id: "i1", activeMinutes: 30 }, { id: "i2", activeMinutes: 15 }]],
+    ["resources", [{ url: "https://example.com/a" }]],
+    ["plannedBreaks", [{ id: "b1", breakMinutes: 5, afterFocusItemId: "i1", beforeFocusItemId: "i2" }]],
+  ];
+  for (const [field, value] of changes) {
+    assert(taskContentHash({ ...base, [field]: value }) !== reference, `${field} change must be detected`);
+  }
+  assert(taskContentHash({ ...base, retiredFocusItems: [{ id: "i0" }] }) !== reference,
+    "item retirement must be detected");
+  assert(taskContentHash({ ...base,
+      plannedBreaks: [{ id: "b1", breakMinutes: 5, afterFocusItemId: "i1", beforeFocusItemId: "i2" }],
+      retiredPlannedBreaks: [{ id: "b1", breakMinutes: 5, afterFocusItemId: "i1", beforeFocusItemId: "i2" }] })
+    !== taskContentHash({ ...base,
+      plannedBreaks: [{ id: "b1", breakMinutes: 5, afterFocusItemId: "i1", beforeFocusItemId: "i2" }] }),
+    "break retirement must be detected");
+});
+
+test("wireTaskRecord flattens plannedStart and copies the record", () => {
+  const original = task("t1", { plannedStart: { time: "09:00", timezone: "UTC" } });
+  const wire = wireTaskRecord(original);
+  equal(wire.plannedStart, "09:00");
+  wire.title = "mutated";
+  equal(original.title, "Task t1", "the caller's record stays untouched");
 });
 
 test("invalid inputs are rejected", () => {

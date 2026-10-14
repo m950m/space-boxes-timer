@@ -13,7 +13,7 @@
 
 import { DATABASE_NAME, DATABASE_VERSION } from "../persistence/planning-store.js";
 import * as api from "./api.js";
-import { buildConnectOps, buildSessionOps, wirePlannedStart } from "./payload.js";
+import { buildConnectOps, buildSessionOps, taskContentHash, wireTaskRecord } from "./payload.js";
 
 const ACK_PREFIX = "connected:";
 
@@ -122,7 +122,7 @@ export class Connection {
       // Nothing to upload; the account is connected from now on.
       this.ack = {
         accountScopeId: this.account.scopeId, email: this.account.email,
-        recordRevisions: {}, sessionIds: [], lastPullRevision: 0,
+        recordRevisions: {}, contentHashes: {}, sessionIds: [], lastPullRevision: 0,
         lastSyncAt: Date.now(),
       };
       await writeAck(snapshot.ownershipScopeId, this.ack);
@@ -131,10 +131,12 @@ export class Connection {
     }
     this.report("syncing", `Uploading ${ops.length} local record(s)…`);
     const response = await api.syncPush(ops);
+    const taskById = new Map(snapshot.tasks.map((task) => [task.id, task]));
     this.ack = {
       accountScopeId: this.account.scopeId,
       email: this.account.email,
       recordRevisions: {},
+      contentHashes: {},
       sessionIds: [],
       lastPullRevision: response.scopeRevision,
       lastSyncAt: Date.now(),
@@ -143,6 +145,7 @@ export class Connection {
       const op = ops[index];
       if (op.kind === "task" && (result.status === "accepted" || result.status === "duplicate")) {
         this.ack.recordRevisions[op.record.id] = result.record?.recordRevision ?? 1;
+        this.ack.contentHashes[op.record.id] = taskContentHash(taskById.get(op.record.id) ?? op.record);
       }
       if (op.kind === "session" && result.status !== "rejected") {
         this.ack.sessionIds.push(op.record.id);
@@ -178,20 +181,28 @@ export class Connection {
     }
   }
 
-  /** Diffs local work against the acknowledged copies; retry-safe by id. */
+  /** Uploads new records and post-acknowledgement local edits; retry-safe
+   * by id and content, and conflicts stay unresolved, never faked as saved. */
   async pushPending({ snapshot, focusState }) {
     const acked = this.ack;
+    acked.contentHashes = acked.contentHashes ?? {};
     const ops = [];
+    const opHashes = new Map();
     for (const task of snapshot.tasks) {
       const base = acked.recordRevisions[task.id];
+      const hash = taskContentHash(task);
       if (base === undefined) {
-        ops.push({ kind: "task", baseRevision: 0,
-          record: { ...task, plannedStart: wirePlannedStart(task.plannedStart) } });
+        const index = ops.length;
+        ops.push({ kind: "task", baseRevision: 0, record: wireTaskRecord(task) });
+        opHashes.set(index, hash);
+      } else if (acked.contentHashes[task.id] !== hash) {
+        // A local edit after the last accepted sync. The server decides with
+        // baseRevision whether this is a new revision or a conflict; an
+        // identical retry comes back as a duplicate (lost-ack safety).
+        const index = ops.length;
+        ops.push({ kind: "task", baseRevision: base, record: wireTaskRecord(task) });
+        opHashes.set(index, hash);
       }
-      // Already-accepted tasks are pushed again only when their local copy
-      // changed; without server-side per-record reads we rely on conflict
-      // detection: a stale baseRevision comes back as "conflict", never as
-      // a silent overwrite.
     }
     if (focusState?.sessions?.some((session) => session.ending)) {
       for (const op of buildSessionOps(focusState)) {
@@ -202,12 +213,27 @@ export class Connection {
     const response = await api.syncPush(ops);
     response.results.forEach((result, index) => {
       const op = ops[index];
-      if (op.kind === "task" && result.status === "accepted") {
+      if (op.kind !== "task") {
+        if (op.kind === "session" && result.status !== "rejected" && !acked.sessionIds.includes(op.record.id)) {
+          acked.sessionIds.push(op.record.id);
+        }
+        return;
+      }
+      const hash = opHashes.get(index);
+      if (result.status === "accepted") {
         acked.recordRevisions[op.record.id] = result.record.recordRevision;
+        acked.contentHashes[op.record.id] = hash;
+      } else if (result.status === "duplicate") {
+        // The server content already matches; acknowledge it without
+        // inventing a revision.
+        if (result.record?.recordRevision !== undefined) {
+          acked.recordRevisions[op.record.id] = result.record.recordRevision;
+        }
+        acked.contentHashes[op.record.id] = hash;
       }
-      if (op.kind === "session" && result.status !== "rejected" && !acked.sessionIds.includes(op.record.id)) {
-        acked.sessionIds.push(op.record.id);
-      }
+      // conflict/rejected: the acknowledgement stays untouched, so the next
+      // synchronization retries the same upload and keeps reporting the
+      // unresolved state instead of claiming success.
     });
     await writeAck(snapshot.ownershipScopeId, acked);
     const summary = summarize(response.results);
@@ -236,7 +262,12 @@ export class Connection {
         const result = await store.commit(store.localScopeId, revision, [command]);
         revision = result.revision;
         merged++;
+        this.ack.contentHashes = this.ack.contentHashes ?? {};
         this.ack.recordRevisions[incoming[index].id] = incoming[index].recordRevision ?? 1;
+        // The merged copy is acknowledged as-is: future local edits to it are
+        // detected against this baseline, other devices' content is not
+        // re-uploaded.
+        this.ack.contentHashes[incoming[index].id] = taskContentHash(command.task);
       } catch {
         // Visible in the next sync's status; never silently claimed merged.
       }
@@ -262,7 +293,7 @@ function summarizeText(counts) {
   const parts = [];
   if (counts.accepted) parts.push(`${counts.accepted} accepted`);
   if (counts.duplicate) parts.push(`${counts.duplicate} already saved`);
-  if (counts.conflict) parts.push(`${counts.conflict} conflict(s): server version kept`);
+  if (counts.conflict) parts.push(`${counts.conflict} conflict(s): unresolved; local changes kept`);
   if (counts.rejected) parts.push(`${counts.rejected} rejected`);
   return parts.length ? parts.join(", ") + "." : "No changes.";
 }
