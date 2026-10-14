@@ -47,8 +47,9 @@ async function parseError(response) {
 
 export async function request(method, path, body) {
   let response = await send(method, path, body, method === "GET" ? null : await primeCsrf());
-  if (response.status === 403) {
-    // Auth transitions rotate the CSRF token; refresh once and retry.
+  if (response.status === 403 && !(response.headers.get("Content-Type") ?? "").includes("application/json")) {
+    // A non-JSON 403 is the CSRF rejection page: auth transitions rotate the
+    // token, so refresh once and retry. JSON 403s are real errors.
     csrfToken = null;
     response = await send(method, path, body, method === "GET" ? null : await primeCsrf(true));
   }

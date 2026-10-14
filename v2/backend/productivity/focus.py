@@ -116,7 +116,7 @@ class FocusEngine:
             require_reference(command.get(field), f"command {field}")
         at = parse_instant(command.get("at"), "at")
         expected = command.get("expectedRevision")
-        if expected != scope.focus_revision:
+        if isinstance(expected, bool) or not isinstance(expected, int) or expected != scope.focus_revision:
             raise ApiError(
                 "stale_revision",
                 "Stale focus revision; refresh the accepted authority state.",
@@ -267,6 +267,7 @@ class FocusEngine:
         )
         session = evidence.session
         activity = self._activity(session)
+        completed_now = False
         if session.ended_at is None and activity["remainingMs"] == 0:
             # Close the observed open boundary as uncertain; never lose the tail.
             self._close_open_evidence(
@@ -278,10 +279,13 @@ class FocusEngine:
             self._end_session(session, at, self._activity(session), None)
             if prior is not None and prior.session_id == session.id:
                 prior.delete()
+                completed_now = True
         self._authority_change(
             command, session, at, context_id, new_revision,
             prior_version=prior.control_version if prior is not None else None,
-            resulting=prior.control_version if prior is not None and prior.session_id == session.id else None,
+            resulting=None if completed_now else (
+                prior.control_version if prior is not None and prior.session_id == session.id else None
+            ),
         )
         return self._state(session, new_revision, decision=decision)
 

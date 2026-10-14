@@ -83,6 +83,15 @@ class StartTests(TestCase):
             engine.apply(start_command(self.task_id, self.item_id, revision=0))
         self.assertEqual(caught.exception.code, "stale_revision")
 
+    def test_boolean_revision_is_not_accepted(self):
+        # Python's True == 1 must not smuggle a stale command through.
+        engine = FocusEngine(self.scope)
+        engine.apply(start_command(self.task_id, self.item_id, revision=0))
+        with self.assertRaises(ApiError) as caught:
+            engine.apply(start_command(self.task_id, self.item_id,
+                                       revision=True, context="ctx-B"))
+        self.assertEqual(caught.exception.code, "stale_revision")
+
     def test_duplicate_session_identity_rejected(self):
         engine = FocusEngine(self.scope)
         session_id = str(uuid.uuid4())
@@ -305,9 +314,11 @@ class ReconcileTests(TestCase):
         self.assertEqual(state["session"]["ending"]["outcome"], "completed")
         self.assertEqual(state["activity"]["confirmedActiveMs"], 1_500_000)
         self.assertIsNone(state["reservation"])
-        from productivity.models import FocusReservation
+        from productivity.models import AuthorityChange, FocusReservation
 
         self.assertFalse(FocusReservation.objects.filter(scope=scope).exists())
+        change = AuthorityChange.objects.get(session__scope=scope, type="reconcile")
+        self.assertIsNone(change.resulting_control_version)
 
 
 class ConcurrencyTests(TransactionTestCase):
