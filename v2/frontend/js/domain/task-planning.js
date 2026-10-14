@@ -47,8 +47,8 @@ function validateItems(items, name, durationField) {
       throw new TypeError(`${name} identity must be unambiguous within its task.`);
     }
     identities.add(item.id);
-    if (!Number.isFinite(item[durationField])) {
-      throw new TypeError(`${durationField} must be a finite number.`);
+    if (!Number.isFinite(item[durationField]) || item[durationField] <= 0) {
+      throw new TypeError(`${durationField} must be a positive finite number.`);
     }
     if (durationField === "breakMinutes") {
       requireReference(item.afterFocusItemId, "afterFocusItemId");

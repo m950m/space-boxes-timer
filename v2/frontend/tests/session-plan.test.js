@@ -216,7 +216,8 @@ test("invalid break durations, identities and adjacency reject without input mut
   const original = freeze(task({ plannedBreaks: [rest()] }));
   for (const plannedBreak of [null, {}, rest(), rest({ id: " " }),
     rest({ id: "new", breakMinutes: undefined }), rest({ id: "new", breakMinutes: "5" }),
-    rest({ id: "new", breakMinutes: Infinity }), rest({ id: "new", afterFocusItemId: "unknown" }),
+    rest({ id: "new", breakMinutes: Infinity }), rest({ id: "new", breakMinutes: 0 }),
+    rest({ id: "new", breakMinutes: -5 }), rest({ id: "new", afterFocusItemId: "unknown" }),
     rest({ id: "new", beforeFocusItemId: "a" }), rest({ id: "new", beforeFocusItemId: "c" }),
     rest({ id: "new", afterFocusItemId: "b", beforeFocusItemId: "a" })]) {
     reject(original, () => addPlannedBreak(original, plannedBreak));
