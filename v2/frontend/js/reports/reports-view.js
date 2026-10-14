@@ -40,7 +40,11 @@ export function mountReports(store) {
   function render(report) {
     output.replaceChildren();
     const list = node("dl");
-    const row = (label, value) => list.append(node("dt", label), node("dd", value));
+    const row = (label, value) => {
+      const metric = node("div");
+      metric.append(node("dt", label), node("dd", value));
+      list.append(metric);
+    };
     row("Sessions", counted(report));
     row("Active focus", `${duration(report.activeFocusMs)} (planned duration of started sessions: ${duration(report.plannedFocusMs)})`);
     row("Pause", report.unknownPauseIntervals
@@ -66,6 +70,7 @@ export function mountReports(store) {
   async function refresh() {
     if (busy) return;
     busy = true;
+    output.setAttribute("aria-busy", "true");
     $("reports-refresh").disabled = true;
     error.textContent = "";
     try {
@@ -81,10 +86,12 @@ export function mountReports(store) {
           : `No recorded focus sessions for ${day.value} yet.`;
       }
     } catch (caught) {
+      output.replaceChildren();
       status.textContent = "Error — activity could not be read.";
-      error.textContent = caught.message;
+      error.textContent = `${caught.message} Refresh activity to retry.`;
     } finally {
       busy = false;
+      output.setAttribute("aria-busy", "false");
       $("reports-refresh").disabled = false;
     }
   }

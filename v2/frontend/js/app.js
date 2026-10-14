@@ -377,7 +377,8 @@ function renderTasks() {
       const totals = getTaskPlanningTotals(task);
       const start = task.plannedStart?.time ?? task.plannedStart;
       const zone = task.plannedStart?.timezone;
-      card.append(element("h3", task.title));
+      card.append(element("p", classification === "primary" ? "Primary task" : "Extra task", "task-kind"),
+        element("h4", task.title));
       if (task.parentTaskId) {
         const parent = snapshot.tasks.find((candidate) => candidate.id === task.parentTaskId);
         card.append(element("p", `Subtask of: ${parent ? parent.title : task.parentTaskId}`, "subtask-of"));

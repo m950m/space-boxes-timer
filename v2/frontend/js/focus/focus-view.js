@@ -91,6 +91,7 @@ export function mountFocus(store) {
       $("focus-clock").dataset.state = state ? "none" : "loading";
       setOnce($("focus-clock-remaining"), "--:--");
       setOnce($("focus-clock-caption"), state ? "No focus sessions yet." : "Loading saved focus…");
+      $("focus-progress").value = 0;
       return;
     }
     const activity = getSessionActivity(state, session.id);
@@ -106,6 +107,9 @@ export function mountFocus(store) {
     $("focus-clock").dataset.state = phase;
     setOnce($("focus-clock-remaining"), clock(session.targetMs - focusedMs));
     setOnce($("focus-clock-caption"), `${label} · focused ${clock(focusedMs)} of ${clock(session.targetMs)} planned`);
+    // Same display projection as the clock; this never records or credits time.
+    $("focus-progress").max = session.targetMs;
+    $("focus-progress").value = Math.min(session.targetMs, focusedMs);
   }
 
   function renderOutcome() {
@@ -142,6 +146,7 @@ export function mountFocus(store) {
       $(id).disabled = disabled;
     }
     const session = currentSession();
+    setOnce($("focus-task-title"), session?.startingSnapshot.title ?? "Ready when you are");
     if (session) {
       const activity = getSessionActivity(state, session.id);
       const context = session.startingSnapshot;
