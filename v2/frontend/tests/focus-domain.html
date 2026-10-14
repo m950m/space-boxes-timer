@@ -9,8 +9,8 @@
   console.log = (...args) => { checks.push(args.join(" ")); log(...args); };
   let error = null;
   try {
-    for (const suite of ["focus-domain", "task-classification", "task-planning", "session-plan",
-      "task-history", "task-hierarchy", "task-resources"]) {
+    for (const suite of ["focus-domain", "activity-reports", "task-classification", "task-planning",
+      "session-plan", "task-history", "task-hierarchy", "task-resources"]) {
       await import(`./${suite}.test.js`);
     }
   } catch (caught) { error = caught.stack ?? String(caught); }
