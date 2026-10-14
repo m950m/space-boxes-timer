@@ -12,6 +12,7 @@ import http.server
 import json
 import os
 import pathlib
+import runpy
 import shutil
 import socket
 import struct
@@ -246,7 +247,7 @@ def suite(client, url):
     client.evaluate("document.querySelector('#save-task').focus()")
     key(client, "Enter", 13)
     wait(client, "document.querySelector('#v2-startup-status').textContent === 'Saved.'")
-    check(client, "document.querySelectorAll('#extra-tasks article').length === 1 && !document.querySelector('article h3 b')",
+    check(client, "document.querySelectorAll('#extra-tasks article').length === 1 && !document.querySelector('article h4 b')",
           "keyboard saves and title is displayed as safe text")
     check(client, "document.activeElement.id === 'task-title' && getComputedStyle(document.activeElement).outlineStyle !== 'none'",
           "keyboard save returns visible focus to the cleared editor")
@@ -285,23 +286,23 @@ def suite(client, url):
     fill(client, "#task-title", "Fourth unsaved")
     fill(client, "#task-classification", "primary")
     save(client, False)
-    check(client, "document.querySelector('#planner-error').textContent.includes('three Primary') && document.querySelectorAll('#primary-tasks article').length === 3 && document.querySelector('#extra-tasks h3').textContent === 'Fourth'",
+    check(client, "document.querySelector('#planner-error').textContent.includes('three Primary') && document.querySelectorAll('#primary-tasks article').length === 3 && document.querySelector('#extra-tasks h4').textContent === 'Fourth'",
           "fourth promotion rejected atomically, saved list unchanged")
     check(client, "document.querySelector('#task-title').value === 'Fourth unsaved'", "failed save retains editable draft")
     navigate(client, url)
     fill(client, "#view-day", "2026-10-10")
-    check(client, "document.querySelectorAll('#primary-tasks article').length === 3 && document.querySelector('#extra-tasks h3').textContent === 'Fourth'",
+    check(client, "document.querySelectorAll('#primary-tasks article').length === 3 && document.querySelector('#extra-tasks h4').textContent === 'Fourth'",
           "rejected classification and metadata do not survive reload")
     click(client, "#extra-tasks article button")
     fill(client, "#task-title", "Quota unsaved")
     client.evaluate("window.originalPut = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function() { throw new DOMException('Test quota exhausted', 'QuotaExceededError'); }")
     save(client, False)
-    check(client, "document.querySelector('#planner-error').textContent.includes('quota') && document.querySelector('#extra-tasks h3').textContent === 'Fourth'",
+    check(client, "document.querySelector('#planner-error').textContent.includes('quota') && document.querySelector('#extra-tasks h4').textContent === 'Fourth'",
           "real IndexedDB write failure shown without optimistic display")
     client.evaluate("IDBObjectStore.prototype.put = window.originalPut")
     navigate(client, url)
     fill(client, "#view-day", "2026-10-10")
-    check(client, "document.querySelector('#extra-tasks h3').textContent === 'Fourth'", "failed write leaves committed task intact after reload")
+    check(client, "document.querySelector('#extra-tasks h4').textContent === 'Fourth'", "failed write leaves committed task intact after reload")
     click(client, "#extra-tasks article button")
     fill(client, "#task-title", "Quota recovered")
     save(client)
@@ -317,7 +318,7 @@ def suite(client, url):
     fill(client, "#task-day", "2026-10-11")
     fill(client, "#task-classification", "extra")
     save(client)
-    check(client, "document.querySelector('#view-day').value === '2026-10-11' && document.querySelector('#extra-tasks h3').textContent === 'Edited plan'",
+    check(client, "document.querySelector('#view-day').value === '2026-10-11' && document.querySelector('#extra-tasks h4').textContent === 'Edited plan'",
           "explicit reschedule and demotion select destination day")
     fill(client, "#view-day", "2026-10-10")
     check(client, "document.querySelectorAll('article').length === 3", "day filtering separates plans")
@@ -337,7 +338,7 @@ def suite(client, url):
     check(client, "document.querySelector('#planner-error').textContent.includes('Stale')", "stale revision explains recovery without overwriting")
     click(client, "#reload-plans")
     wait(client, "document.querySelector('#v2-startup-status').textContent === 'Local plans loaded.'")
-    check(client, "document.querySelector('#primary-tasks h3').textContent === 'Other tab'", "explicit reload recovers committed plans")
+    check(client, "document.querySelector('#primary-tasks h4').textContent === 'Other tab'", "explicit reload recovers committed plans")
     # Existing payloads must survive edits through the actual UI, not just adapter tests.
     client.evaluate("""(async () => {
       const store = await (await import('/js/app.js')).planningStore;
@@ -674,7 +675,7 @@ def main():
                 check(client, "document.activeElement.id === 'task-title'", "initial load focuses the editor title")
                 assert stored(client) == expected, "Restart changed committed scope/tasks"
                 fill(client, "#view-day", "2026-10-11")
-                check(client, "document.querySelector('#extra-tasks h3').textContent === 'Edited plan'", "browser process restart retains committed planner")
+                check(client, "document.querySelector('#extra-tasks h4').textContent === 'Edited plan'", "browser process restart retains committed planner")
                 assert not client.errors, client.errors
         print("PASS planner end-to-end suite + browser restart", flush=True)
     finally:
@@ -684,3 +685,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # Keep presentation acceptance inside the existing Planner UI CI entrypoint.
+    runpy.run_path(str(pathlib.Path(__file__).with_name("run-visual-tests.py")), run_name="__main__")

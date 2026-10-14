@@ -3,25 +3,43 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Space Boxes — Local planner</title>
+    <title>Space Boxes — Plan, focus, reflect</title>
     <link rel="stylesheet" href="./css/planner.css">
     <script type="module" src="./js/app.js"></script>
   </head>
   <body>
-    <main>
-      <h1>Local planner</h1>
-      <p>Plan here without an account. Tasks are saved in this browser.</p>
-      <p id="v2-startup-status" role="status" aria-live="polite" aria-atomic="true">Loading local plans…</p>
-      <p id="planner-error" role="alert" aria-atomic="true"></p>
-      <p id="timezone-context"></p>
-      <button id="reload-plans" type="button" disabled>Reload saved plans (discard edits)</button>
-      <section id="focus-panel" aria-labelledby="focus-heading" aria-busy="true">
+    <a class="skip-link" href="#workspace">Skip to workspace</a>
+    <header class="site-header">
+      <a class="brand" href="#workspace">Space Boxes <span>V2</span></a>
+      <nav aria-label="Workspace">
+        <a href="#plans-heading">Planner</a>
+        <a href="#focus-heading">Focus</a>
+        <a href="#reports-heading">Activity</a>
+      </nav>
+    </header>
+    <main id="workspace" tabindex="-1">
+      <div class="workspace-intro">
+        <p class="eyebrow">A little space for what matters</p>
+        <h1>Plan your day. Focus on one thing.</h1>
+        <p>Choose up to three Primary tasks, with room for Extra work and subtasks.</p>
+        <p class="local-notice">Local workspace · Tasks are saved in this browser. No account needed.</p>
+      </div>
+      <div class="save-context">
+        <p id="v2-startup-status" role="status" aria-live="polite" aria-atomic="true">Loading local plans…</p>
+        <p id="timezone-context"></p>
+        <button id="reload-plans" type="button" disabled>Reload saved plans (discard edits)</button>
+      </div>
+      <section id="focus-panel" class="panel" aria-labelledby="focus-heading" aria-busy="true">
+        <p class="eyebrow">One session at a time</p>
         <h2 id="focus-heading" tabindex="-1">Focus</h2>
         <p id="focus-status" role="status" aria-live="polite" aria-atomic="true">Loading saved focus…</p>
         <p id="focus-error" role="alert" aria-atomic="true"></p>
+        <h3 id="focus-task-title">Ready when you are</h3>
         <div id="focus-clock" role="timer" aria-live="off" aria-atomic="true" data-state="loading">
+          <p class="clock-label">Active focus remaining</p>
           <p id="focus-clock-remaining">--:--</p>
           <p id="focus-clock-caption">Loading saved focus…</p>
+          <progress id="focus-progress" max="1" value="0" aria-hidden="true"></progress>
         </div>
         <p id="focus-outcome" hidden></p>
         <div class="focus-controls" role="group" aria-label="Focus session controls">
@@ -39,7 +57,7 @@
           <p>This session is reserved by another tab or a previous browser visit. Confirm to move control here. Unobserved time remains unresolved; a paused session stays paused.</p>
           <button id="focus-recover" type="button">Confirm recovery / move control here</button>
         </div>
-        <p>Only saved, confirmed focus counts. Session endings do not mark tasks complete. Further sessions require an explicit Start.</p>
+        <p class="help">Only saved, confirmed focus counts. Session endings do not mark tasks complete. Further sessions require an explicit Start.</p>
         <div id="focus-reconciliation"></div>
         <details>
           <summary>Saved session history and outcomes</summary>
@@ -47,8 +65,10 @@
         </details>
       </section>
       <div class="layout">
-        <section aria-labelledby="editor-heading">
-          <h2 id="editor-heading">Create task</h2>
+        <section class="panel" aria-labelledby="editor-heading">
+          <p class="eyebrow">Make a plan</p>
+          <h2 id="editor-heading" tabindex="-1">Create task</h2>
+          <p id="planner-error" role="alert" aria-atomic="true"></p>
           <form id="task-form" novalidate aria-describedby="planner-error">
             <fieldset id="editor-fields" disabled>
               <label for="task-title">Title (required)</label>
@@ -114,24 +134,28 @@
             </fieldset>
           </form>
         </section>
-        <section aria-labelledby="plans-heading">
-          <h2 id="plans-heading">Your plan</h2>
+        <section class="panel" aria-labelledby="plans-heading">
+          <p class="eyebrow">Room for your priorities</p>
+          <h2 id="plans-heading" tabindex="-1">Your plan</h2>
           <label for="view-day">Show Plan Day</label>
           <input id="view-day" type="date" required disabled>
           <p id="day-summary" role="status" aria-live="polite"></p>
           <div id="task-list" aria-busy="true">
-            <h3>Primary</h3><div id="primary-tasks"></div>
-            <h3>Extra</h3><div id="extra-tasks"></div>
+            <!-- Reserved for owner-approved original artwork; no substitute is displayed. -->
+            <div id="primary-artwork" hidden aria-hidden="true"></div>
+            <h3>Primary <span class="heading-note">Up to three</span></h3><div id="primary-tasks"></div>
+            <h3>Extra <span class="heading-note">Room for more</span></h3><div id="extra-tasks"></div>
           </div>
         </section>
       </div>
-      <section id="reports-panel" aria-labelledby="reports-heading">
-        <h2 id="reports-heading">Day activity</h2>
+      <section id="reports-panel" class="panel" aria-labelledby="reports-heading">
+        <p class="eyebrow">Reflect on recorded work</p>
+        <h2 id="reports-heading" tabindex="-1">Activity reports</h2>
         <p id="reports-status" role="status" aria-live="polite" aria-atomic="true">Loading recorded activity…</p>
         <p id="reports-error" role="alert" aria-atomic="true"></p>
         <button id="reports-refresh" type="button">Refresh activity</button>
         <div id="reports-output"></div>
-        <p>Factual summary of recorded focus sessions for the Plan Day shown above. Sessions count toward the Plan Day they were planned under, even when work crosses midnight. Pause, interruptions and unresolved time are shown separately; wall-clock time is never reported as focus.</p>
+        <p class="help">Factual summary of recorded focus sessions for the Plan Day shown above. Sessions count toward the Plan Day they were planned under, even when work crosses midnight. Pause, interruptions and unresolved time are shown separately; wall-clock time is never reported as focus.</p>
       </section>
     </main>
   </body>
