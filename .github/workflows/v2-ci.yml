@@ -106,6 +106,9 @@ jobs:
       - name: Run the connected-payload GJS suite
         run: gjs -m v2/frontend/tests/connected-payload.test.js
 
+      - name: Run the connected-focus-mirror GJS suite
+        run: gjs -m v2/frontend/tests/connected-focus-mirror.test.js
+
   chrome-browser:
     name: Real-Chrome persistence and planner suites
     runs-on: ubuntu-26.04

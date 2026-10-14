@@ -41,7 +41,7 @@ def main():
     )
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        with tempfile.TemporaryDirectory(prefix="v2-idb-browser-") as profile:
+        with tempfile.TemporaryDirectory(prefix="v2-idb-browser-", ignore_cleanup_errors=True) as profile:
             for phase in ("suite", "restart"):
                 received.clear()
                 with tempfile.TemporaryFile(mode="w+") as log:

@@ -3,6 +3,7 @@ import { getTaskPlanningTotals } from "./domain/task-planning.js";
 import { mountFocus } from "./focus/focus-view.js";
 import { mountReports } from "./reports/reports-view.js";
 import { mountAccountPanel } from "./account-view.js";
+import { createServerFocusStore } from "./connected/server-focus-store.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("task-form");
@@ -684,16 +685,27 @@ async function loadPlans() {
 $("reload-plans").addEventListener("click", loadPlans);
 planningStore.then(async (opened) => {
   store = opened;
-  accountPanel = mountAccountPanel({ planningStore });
+  // Focus authority follows the connection: signed-out work stays in the
+  // local engine; a connected account applies commands and serves history
+  // (this device's and other devices') from the server (ADR-006).
+  const localFocusStore = await openPlanningStore();
+  const connectedFocusStore = createServerFocusStore();
+  const focusStore = {
+    loadFocus: () => (accountPanel?.connection.connected
+      ? connectedFocusStore.loadFocus() : localFocusStore.loadFocus()),
+    commitFocus: (intent) => (accountPanel?.connection.connected
+      ? connectedFocusStore.commitFocus(intent) : localFocusStore.commitFocus(intent)),
+  };
+  const reloadFocusViews = () => { focusView?.load(); reportsView?.refresh(); };
+  accountPanel = mountAccountPanel({ planningStore, onConnectedChange: reloadFocusViews });
   await loadPlans();
   // Independent status reporting keeps focus checkpoints from overwriting planner feedback.
-  const focusStore = await openPlanningStore();
   focusView = mountFocus(focusStore);
   focusView.setPlan(snapshot, viewDay.value);
   await focusView.load();
   reportsView = mountReports(focusStore);
   await reportsView.refresh();
-  window.addEventListener("pagehide", () => { focusView.stop(); focusStore.close(); });
+  window.addEventListener("pagehide", () => { focusView.stop(); localFocusStore.close(); });
   window.addEventListener("pageshow", (event) => { if (event.persisted) location.reload(); });
 }).catch((error) => {
   setBusy(false);

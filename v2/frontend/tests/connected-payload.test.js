@@ -1,4 +1,4 @@
-import { buildConnectOps, buildSessionOps, planDayIds } from "../js/connected/payload.js";
+import { buildConnectOps, buildSessionOps, planDayIds, wirePlannedStart } from "../js/connected/payload.js";
 
 let passed = 0;
 
@@ -16,7 +16,7 @@ function test(name, fn) {
     passed++;
   } catch (error) {
     console.error(`FAIL: ${name}: ${error.message}`);
-    console.exit(1);
+    throw error;
   }
 }
 
@@ -116,6 +116,15 @@ test("buildSessionOps groups evidence, decisions and authority per session", () 
   equal(ops[0].record.authorityChanges.map((item) => item.id), ["a1"]);
   equal(ops[1].record.evidence.map((item) => item.id), ["e2"]);
   equal(ops[1].record.reconciliations.map((item) => item.id), ["d1"]);
+});
+
+test("task ops flatten the local plannedStart object to the wire string", () => {
+  const objectForm = task("t1", { plannedStart: { time: "09:00", timezone: "UTC" } });
+  const ops = buildConnectOps({ tasks: [objectForm], focusState: endedFocusState([]) });
+  equal(ops[1].record.plannedStart, "09:00");
+  const stringForm = task("t2", { plannedStart: "08:30" });
+  equal(wirePlannedStart(stringForm.plannedStart), "08:30");
+  equal(wirePlannedStart(undefined), undefined, "missing values pass through to server validation");
 });
 
 test("invalid inputs are rejected", () => {

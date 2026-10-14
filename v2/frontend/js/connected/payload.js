@@ -66,6 +66,15 @@ export function buildSessionOps(focusState) {
   return ops;
 }
 
+/** The sync wire format keeps plannedStart as the planned clock string; the
+ * local record's object form { time, timezone } flattens to its time. The
+ * day-level timezone travels with the plan-day op, and pulled tasks carry the
+ * string form the local reads already accept. */
+export function wirePlannedStart(value) {
+  if (value && typeof value === "object" && typeof value.time === "string") return value.time;
+  return value;
+}
+
 /** Ordered, independent sync ops for one local scope. */
 export function buildConnectOps({ tasks, focusState }) {
   if (!Array.isArray(tasks)) throw new TypeError("tasks must be an array.");
@@ -82,7 +91,8 @@ export function buildConnectOps({ tasks, focusState }) {
     ops.push({ kind: "plan_day", record: { id: dayId, timezone: focusState.timezone } });
   }
   for (const task of tasks) {
-    ops.push({ kind: "task", baseRevision: 0, record: { ...task } });
+    ops.push({ kind: "task", baseRevision: 0,
+      record: { ...task, plannedStart: wirePlannedStart(task.plannedStart) } });
   }
   ops.push(...buildSessionOps(focusState));
   return ops;

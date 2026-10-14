@@ -105,6 +105,13 @@ gjs -m v2/frontend/tests/task-hierarchy.test.js
 gjs -m v2/frontend/tests/task-resources.test.js
 ```
 
+The connected-account pure suites (no browser or server needed):
+
+```bash
+gjs -m v2/frontend/tests/connected-payload.test.js
+gjs -m v2/frontend/tests/connected-focus-mirror.test.js
+```
+
 The browser runners require Python stdlib and `google-chrome` or `chromium` on
 `PATH`; no Django server, Node/npm or frontend build is needed. They serve their
 own ephemeral localhost origins and use disposable browser profiles:
@@ -654,6 +661,13 @@ Run the focused suite and the five domain regression suites above:
 gjs -m v2/frontend/tests/task-resources.test.js
 ```
 
+The connected-account pure suites (no browser or server needed):
+
+```bash
+gjs -m v2/frontend/tests/connected-payload.test.js
+gjs -m v2/frontend/tests/connected-focus-mirror.test.js
+```
+
 Tests cover optionality, add/edit/remove, invalid shapes, input isolation, no
 count cap, exact text preservation, unchanged history and composition with
 classification, rescheduling and split work. This slice adds no UI, browser
@@ -721,17 +735,31 @@ Exports (`Export my data (JSON)`) are machine-readable documents preserving
 plans, activity, uncertainty, provenance and relationships, usable outside the
 product (OD-016; the format is `space-boxes-v2-export/1`).
 
+**Focus while connected.** The Focus panel keeps the same controls, but the
+server is the focus authority (ADR-006): Start/Pause/Resume/End, checkpoint
+observations, recovery/takeover and reconciliation decisions are applied by
+the server engine through `POST /api/v2/focus/command`. Stale authority
+(revision or controller) is an explicit error and the panel asks you to
+refresh; nothing is applied twice. Signed-out use continues entirely on the
+local engine. Connecting still requires no active local session, so authority
+never forks between browser and server.
+
+**Focus history across devices.** While connected, the Focus panel and
+Activity reports read the account's confirmed history — including sessions
+recorded on other devices — from the server change feed, using the same
+factual activity arithmetic. The local IndexedDB focus aggregate is not
+rewritten: server history is presented from server state, and the local
+engine's authority sequence stays untouched.
+
 Implemented boundaries worth knowing:
 
-- Connected focus control is server-side and tested (single reservation per
-  account, stale revision/controller rejection, confirmed takeover,
-  auto-completion). The live focus panel continues to run on the local engine
-  and uploads ended history; wiring the panel's Start/Pause/Resume/End and
-  takeover UX to server acceptance is the next integration slice at the focus
-  UI boundary.
 - Cross-device synchronization covers tasks (download into the planner) and
-  ended history; downloading another device's focus history into the local
-  focus panel is not implemented yet.
+  the connected focus/history presentation above; the local focus store
+  remains a pre-connection local-history mirror and is not back-filled with
+  other devices' records.
+- Observing another device's live session updates on the one-second observer
+  poll of the change feed, not push; takeover uses the existing explicit
+  recovery confirmation.
 - Report delivery preferences are stored but no delivery scheduler, email
   delivery or extension/blocking is implemented (OD-020 keeps the extension
   after core V2).

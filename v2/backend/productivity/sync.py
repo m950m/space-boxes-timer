@@ -78,6 +78,7 @@ class SyncService:
         return {
             "scopeRevision": scope.revision,
             "focusRevision": scope.focus_revision,
+            "ownershipScopeId": str(scope.pk),
             "planDays": [
                 serialization.plan_day_payload(d)
                 for d in PlanDay.objects.filter(scope=scope, scope_revision__gt=since).order_by("day_id")

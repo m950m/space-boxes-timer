@@ -8,7 +8,7 @@ import { Connection } from "./connected/connection.js";
 
 const $ = (id) => document.getElementById(id);
 
-export function mountAccountPanel({ planningStore }) {
+export function mountAccountPanel({ planningStore, onConnectedChange = () => {} } = {}) {
   const elements = {
     panel: $("account-panel"),
     signedOut: $("account-signed-out"),
@@ -32,16 +32,28 @@ export function mountAccountPanel({ planningStore }) {
   const connection = new Connection({ onStatus: renderStatus });
   let latestSnapshot = null;
   let storePromise = planningStore;
+  let wasConnected = false;
+
+  /** Focus/report views re-read their authority when connected-ness flips. */
+  function notifyConnectedChange() {
+    const connected = connection.connected;
+    if (connected !== wasConnected) {
+      wasConnected = connected;
+      try { onConnectedChange(connected); } catch { /* presentation only */ }
+    }
+  }
 
   function renderStatus(state, detail) {
     const label = {
       connected: "Connected", syncing: "Synchronizing…", "sync-error": "Sync problem",
+      "signed-in": "Signed in",
     }[state] ?? state;
     elements.connectionState.textContent = label;
     elements.syncStatus.textContent = detail ?? "";
   }
 
   function render() {
+    notifyConnectedChange();
     const signedIn = Boolean(connection.account);
     elements.signedOut.hidden = signedIn;
     elements.signedIn.hidden = !signedIn;
@@ -144,7 +156,19 @@ export function mountAccountPanel({ planningStore }) {
     latestSnapshot = snapshot;
   }
 
-  connection.init().then(render).catch(render);
+  // A live session cookie plus the durable acknowledgement restore the
+  // connected state after a reload; the acknowledgement is bound to the
+  // local scope it was accepted for (account switching cannot relabel it).
+  connection.init()
+    .then(async () => {
+      if (connection.account) {
+        try {
+          await connection.loadAck((await planningStore).localScopeId);
+        } catch { /* rendered as signed-in but not connected; sync retry can repair */ }
+      }
+    })
+    .then(render)
+    .catch(render);
   render();
   return { connection, update, render };
 }

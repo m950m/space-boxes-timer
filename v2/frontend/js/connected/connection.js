@@ -13,7 +13,7 @@
 
 import { DATABASE_NAME, DATABASE_VERSION } from "../persistence/planning-store.js";
 import * as api from "./api.js";
-import { buildConnectOps, buildSessionOps } from "./payload.js";
+import { buildConnectOps, buildSessionOps, wirePlannedStart } from "./payload.js";
 
 const ACK_PREFIX = "connected:";
 
@@ -185,7 +185,8 @@ export class Connection {
     for (const task of snapshot.tasks) {
       const base = acked.recordRevisions[task.id];
       if (base === undefined) {
-        ops.push({ kind: "task", baseRevision: 0, record: { ...task } });
+        ops.push({ kind: "task", baseRevision: 0,
+          record: { ...task, plannedStart: wirePlannedStart(task.plannedStart) } });
       }
       // Already-accepted tasks are pushed again only when their local copy
       // changed; without server-side per-record reads we rely on conflict

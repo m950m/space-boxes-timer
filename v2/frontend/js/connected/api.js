@@ -68,4 +68,5 @@ export const logout = () => request("POST", "/api/v2/accounts/logout", {});
 export const syncPush = (ops) => request("POST", "/api/v2/sync/push", { ops });
 export const syncPull = (since) => request("GET", `/api/v2/sync/pull?since=${encodeURIComponent(since)}`);
 export const focusState = () => request("GET", "/api/v2/focus/state");
+export const focusCommand = (command) => request("POST", "/api/v2/focus/command", command);
 export const deleteAccount = (password) => request("POST", "/api/v2/account/delete", { password });
