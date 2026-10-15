@@ -81,6 +81,62 @@ def screenshot(client, folder, name):
         (folder / f"{name}.png").write_bytes(base64.b64decode(result["data"]))
 
 
+def reports_race(client, engine):
+    # Isolated DOM, production view module, controlled read completion order.
+    client.evaluate("""(async () => {
+      const frame = document.createElement('iframe');
+      frame.srcdoc = '<input id="view-day" type="date" value="2026-10-15"><button id="reports-refresh">Refresh</button><p id="reports-status"></p><p id="reports-error"></p><div id="reports-output"></div>';
+      document.body.append(frame);
+      await new Promise(resolve => frame.onload = resolve);
+      window.raceWindow = frame.contentWindow;
+      await raceWindow.eval(`(async () => {
+        const {mountReports} = await import('/js/reports/reports-view.js');
+        window.reads = [];
+        window.view = mountReports({loadFocus: () => new Promise((resolve, reject) => reads.push({resolve, reject}))});
+        window.pending = view.refresh();
+        document.querySelector('#view-day').value = '2026-10-16';
+        document.querySelector('#view-day').dispatchEvent(new Event('change'));
+      })()`);
+    })()""")
+    check(client, "raceWindow.reads.length === 2", f"{engine}: changing Plan Day during Refresh requests fresh evidence")
+    client.evaluate("""(async () => {
+      const state = await (await import('/js/app.js')).planningStore.then(s => s.loadFocus());
+      raceWindow.reads[1].resolve(state);
+    })()""")
+    wait(client, "raceWindow.document.querySelector('#reports-status').textContent.includes('2026-10-16')")
+    client.evaluate("raceWindow.reads[0].reject(new Error('obsolete read failure')); raceWindow.pending")
+    check(client, "!raceWindow.document.querySelector('#reports-error').textContent && raceWindow.document.querySelector('#reports-status').textContent.includes('2026-10-16')", f"{engine}: obsolete Refresh failure cannot overwrite the latest day")
+    client.evaluate("""(() => {
+      raceWindow.pending = raceWindow.view.refresh();
+      raceWindow.document.querySelector('#view-day').value = '2026-10-17';
+      raceWindow.document.querySelector('#view-day').dispatchEvent(new Event('change'));
+    })()""")
+    check(client, "raceWindow.document.querySelector('#reports-status').textContent.includes('2026-10-17') && !raceWindow.document.querySelector('#reports-output').children.length", f"{engine}: pending day change clears the previous result and names the loading day")
+    client.evaluate("""(async () => {
+      const state = await (await import('/js/app.js')).planningStore.then(s => s.loadFocus());
+      raceWindow.reads[2].resolve(state);
+      await raceWindow.pending;
+    })()""")
+    check(client, "raceWindow.document.querySelector('#reports-output').getAttribute('aria-busy') === 'true' && raceWindow.document.querySelector('#reports-refresh').disabled && !raceWindow.document.querySelector('#reports-output').children.length", f"{engine}: obsolete success cannot render or settle a newer read")
+    client.evaluate("raceWindow.reads[3].reject(new Error('current read failure'))")
+    wait(client, "raceWindow.document.querySelector('#reports-error').textContent.includes('current read failure')")
+    check(client, "!raceWindow.document.querySelector('#reports-refresh').disabled && !raceWindow.document.querySelector('#reports-output').children.length", f"{engine}: current read failure settles controls and allows retry")
+    client.evaluate("""(async () => {
+      raceWindow.pending = raceWindow.view.refresh();
+      raceWindow.reads[4].resolve(await (await import('/js/app.js')).planningStore.then(s => s.loadFocus()));
+      await raceWindow.pending;
+    })()""")
+    check(client, "!raceWindow.document.querySelector('#reports-error').textContent && raceWindow.document.querySelector('#reports-status').textContent.includes('2026-10-17')", f"{engine}: latest read retries successfully after failure")
+    client.evaluate("""(() => {
+      raceWindow.pending = raceWindow.view.refresh();
+      raceWindow.document.querySelector('#view-day').value = '';
+      raceWindow.document.querySelector('#view-day').dispatchEvent(new Event('change'));
+    })()""")
+    client.evaluate("raceWindow.reads.at(-1).reject(new Error('obsolete after clearing day')); raceWindow.pending")
+    check(client, "raceWindow.document.querySelector('#reports-status').textContent.startsWith('Choose a Plan Day') && !raceWindow.document.querySelector('#reports-output').children.length && !raceWindow.document.querySelector('#reports-refresh').disabled && raceWindow.document.querySelector('#reports-output').getAttribute('aria-busy') === 'false'", f"{engine}: clearing Plan Day cancels stale output and settles busy controls")
+    client.evaluate("raceWindow.frameElement.remove()")
+
+
 def suite(client, url, screenshots):
     helpers.navigate(client, url)
     wait(client, "!!document.querySelector('#reports-output dl') || !!document.querySelector('#reports-error').textContent || !!document.querySelector('#focus-error').textContent")
@@ -225,6 +281,7 @@ def suite(client, url, screenshots):
         wait(client, "document.querySelector('#focus-clock').dataset.state === 'ended'")
         expected = "task-title" if keep_in_planner else "focus-heading"
         check(client, f"document.activeElement.id === '{expected}'", "automatic completion " + ("preserves Planner focus" if keep_in_planner else "moves focus from the disappearing control to Focus context"))
+    reports_race(client, "Chrome")
 
 
 def main():
