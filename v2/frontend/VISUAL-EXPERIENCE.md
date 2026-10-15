@@ -1,5 +1,11 @@
 # V2 presentation checkpoint
 
+Historical PR #52 evidence follows. The independent post-merge
+[final acceptance report](FINAL-VISUAL-ACCEPTANCE.md) records later fixes,
+actual browser zoom, axe/Firefox evidence, remaining human checks and the merged
+revision's CI blocker. [Artwork integration preparation](ARTWORK-INTEGRATION.md)
+does not approve or install original assets.
+
 This work builds on `aeb98789192a63b4c69bb7e769cc5f17e1d7c168` under the
 [owner's visual workstream authorization](https://github.com/m950m/space-boxes-timer/issues/11#issuecomment-6164448833).
 The local-first planning, focus authority and report calculations already existed.
