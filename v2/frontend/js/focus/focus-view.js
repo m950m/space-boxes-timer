@@ -128,6 +128,8 @@ export function mountFocus(store) {
   }
 
   function render() {
+    const focused = document.activeElement;
+    const hadFocus = $("focus-panel").contains(focused);
     const reservation = state?.reservation;
     const owns = reservation?.controllerId === controller.contextId;
     const disabled = busy || failed || !state;
@@ -193,6 +195,11 @@ export function mountFocus(store) {
       forms.get(evidence.id).querySelector("fieldset").disabled = disabled
         || (reservation?.sessionId === evidence.sessionId && !owns);
     }
+    // Automatic completion or a remote update can remove the focused control.
+    // Keep its keyboard context without stealing focus from Planner or Activity.
+    if (!busy && hadFocus && (!focused.isConnected || focused.hidden || focused.matches(":disabled"))) {
+      $("focus-heading").focus();
+    }
   }
 
   async function act(run, focusAfter = true) {
@@ -204,9 +211,12 @@ export function mountFocus(store) {
       failed = false;
       $("focus-error").textContent = "";
       controller.watch();
-      if (focusAfter) $("focus-heading").focus();
     } catch (error) { fail(error); }
-    finally { busy = false; render(); }
+    finally {
+      busy = false;
+      render();
+      if (focusAfter) $("focus-heading").focus();
+    }
   }
 
   function reconciliationForm(evidence) {

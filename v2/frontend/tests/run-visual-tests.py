@@ -92,6 +92,9 @@ def suite(client, url, screenshots):
         check(client, f"document.activeElement.id === '{heading}'", f"native navigation focuses {heading}")
     check(client, "document.querySelector('#primary-artwork').hidden && document.querySelectorAll('#primary-artwork *').length === 0", "unapproved artwork remains isolated and absent")
     check(client, "document.querySelector('#reports-output').getAttribute('aria-busy') === 'false'", "report read exposes settled busy state")
+    activate(client, "#reports-refresh")
+    wait(client, "document.querySelector('#reports-output').getAttribute('aria-busy') === 'false'")
+    check(client, "document.activeElement.id === 'reports-refresh'", "Activity refresh preserves its keyboard focus after the read")
     contrast(client)
 
     # Exercise all dense editors through the production form, including long unbroken text.
@@ -203,6 +206,25 @@ def suite(client, url, screenshots):
         activate(client, "#focus-end")
         wait(client, "document.querySelector('#focus-clock').dataset.state === 'ended'")
     check(client, "[...document.querySelectorAll('#extra-tasks .subtask-of')].some(e => e.textContent === 'Subtask of: Research notes')", "child work keeps its visible parent context")
+
+    click(client, "#cancel-edit")
+    fill(client, "#task-title", "Keyboard completion")
+    fill(client, "#task-start", "12:00")
+    fill(client, "#focus-items input", "0.03")
+    click(client, "#save-task")
+    wait(client, "document.querySelector('#v2-startup-status').textContent === 'Saved.'")
+    for keep_in_planner in [False, True]:
+        client.evaluate("""(() => {
+          const select = document.querySelector('#focus-selection');
+          select.value = [...select.options].find(o => o.textContent.startsWith('Keyboard completion —')).value;
+          select.dispatchEvent(new Event('change'));
+        })()""")
+        click(client, "#focus-start")
+        wait(client, "document.querySelector('#focus-clock').dataset.state === 'running'")
+        client.evaluate("document.querySelector(" + json.dumps("#task-title" if keep_in_planner else "#focus-pause") + ").focus()")
+        wait(client, "document.querySelector('#focus-clock').dataset.state === 'ended'")
+        expected = "task-title" if keep_in_planner else "focus-heading"
+        check(client, f"document.activeElement.id === '{expected}'", "automatic completion " + ("preserves Planner focus" if keep_in_planner else "moves focus from the disappearing control to Focus context"))
 
 
 def main():

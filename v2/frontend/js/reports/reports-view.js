@@ -69,9 +69,11 @@ export function mountReports(store) {
 
   async function refresh() {
     if (busy) return;
+    const refreshButton = $("reports-refresh");
+    const hadFocus = document.activeElement === refreshButton;
     busy = true;
     output.setAttribute("aria-busy", "true");
-    $("reports-refresh").disabled = true;
+    refreshButton.disabled = true;
     error.textContent = "";
     try {
       const state = await store.loadFocus();
@@ -92,7 +94,10 @@ export function mountReports(store) {
     } finally {
       busy = false;
       output.setAttribute("aria-busy", "false");
-      $("reports-refresh").disabled = false;
+      refreshButton.disabled = false;
+      // Disabling the button can move focus to body; preserve keyboard position
+      // unless the user has moved to another control while the read was pending.
+      if (hadFocus && document.activeElement === document.body) refreshButton.focus();
     }
   }
 
