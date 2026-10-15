@@ -162,39 +162,97 @@ class SyncService:
                     409,
                 )
             return self._create_task(task_id, record)
+        if self._task_content_matches(existing, record):
+            # The record already describes the stored content: an idempotent
+            # retry or no-op, never a new revision and never a conflict.
+            return ("duplicate", serialization.task_payload(existing))
         if base_revision != existing.record_revision:
-            if base_revision in (0, None) and self._task_matches(existing, record):
-                return ("duplicate", serialization.task_payload(existing))
             return ("conflict", serialization.task_payload(existing))
         return self._update_task(existing, record, base_revision)
 
-    def _task_matches(self, task, record):
-        """A byte-identical retry of an already-accepted create."""
-        current = {
-            "planDayId": task.plan_day.day_id,
-            "title": task.title,
-            "plannedStart": task.planned_start,
-            "classification": task.classification,
-            "note": task.note or "",
-            "parentTaskId": str(task.parent_task_id) if task.parent_task_id else None,
-        }
-        incoming = {
-            "planDayId": record.get("planDayId"),
-            "title": (record.get("title") or "").strip(),
-            "plannedStart": record.get("plannedStart"),
-            "classification": record.get("classification"),
-            "note": record.get("note") or "",
-            "parentTaskId": record.get("parentTaskId") or None,
-        }
-        if current != incoming:
+    @staticmethod
+    def _with_none(value):
+        return None if value in (None, "") else value
+
+    def _task_content_matches(self, task, record):
+        """True when the record already describes the stored task content, so
+        the push is an idempotent retry or a no-op rather than a new revision.
+
+        Compares every applied planning field — not just the core columns — so
+        an edit to resources, breaks, retirement or plan order can never be
+        silently swallowed as a duplicate. Malformed input never matches; the
+        regular validation and conflict paths report it.
+        """
+        current = serialization.task_payload(task)
+        title = record.get("title")
+        if (
+            current["planDayId"] != record.get("planDayId")
+            or current["title"] != (title.strip() if isinstance(title, str) else title)
+            or current["plannedStart"] != record.get("plannedStart")
+            or current["classification"] != record.get("classification")
+            or self._with_none(current.get("note")) != self._with_none(record.get("note"))
+            or self._with_none(current.get("parentTaskId")) != self._with_none(record.get("parentTaskId"))
+            or current.get("completedAt") != record.get("completedAt")
+            or current.get("cancelledAt") != record.get("cancelledAt")
+        ):
             return False
-        server_items = sorted(
-            (str(i.pk), i.active_minutes) for i in task.focus_items.filter(retired_at__isnull=True)
-        )
-        client_items = sorted(
-            (i["id"], i["activeMinutes"]) for i in record.get("sessionPlan") or []
-        )
-        return server_items == client_items
+        incoming_plan = self._plan_keys(record.get("sessionPlan"))
+        if incoming_plan is None or [(i["id"], i["activeMinutes"]) for i in current["sessionPlan"]] != incoming_plan:
+            return False
+        incoming_retired = self._retired_keys(record.get("retiredFocusItems"))
+        if incoming_retired is None or sorted(i["id"] for i in current.get("retiredFocusItems") or []) != incoming_retired:
+            return False
+
+        def break_key(row, retired):
+            minutes = row.get("breakMinutes")
+            return (
+                row.get("id"),
+                minutes if isinstance(minutes, int) and not isinstance(minutes, bool) else None,
+                self._with_none(row.get("afterFocusItemId")),
+                self._with_none(row.get("beforeFocusItemId")),
+                retired,
+            )
+
+        server_breaks = {b["id"]: break_key(b, False) for b in current.get("plannedBreaks") or []}
+        server_breaks.update({b["id"]: break_key(b, True) for b in current.get("retiredPlannedBreaks") or []})
+        incoming_breaks = {}
+        for retired, rows in ((False, record.get("plannedBreaks")), (True, record.get("retiredPlannedBreaks"))):
+            for row in rows or []:
+                if not isinstance(row, dict) or not row.get("id"):
+                    return False
+                incoming_breaks[row["id"]] = break_key(row, retired)
+        if server_breaks != incoming_breaks:
+            return False
+
+        def resource_keys(rows):
+            keyed = []
+            for row in rows or []:
+                if not isinstance(row, dict) or not isinstance(row.get("url"), str):
+                    return None
+                keyed.append((row["url"], self._with_none(row.get("label"))))
+            return sorted(keyed)
+
+        server_resources = resource_keys(current.get("resources"))
+        incoming_resources = resource_keys(record.get("resources"))
+        return server_resources is not None and server_resources == incoming_resources
+
+    @staticmethod
+    def _plan_keys(rows):
+        keyed = []
+        for row in rows or []:
+            if not isinstance(row, dict) or not row.get("id"):
+                return None
+            keyed.append((row["id"], row.get("activeMinutes")))
+        return keyed
+
+    @staticmethod
+    def _retired_keys(rows):
+        keyed = []
+        for row in rows or []:
+            if not isinstance(row, dict) or not row.get("id"):
+                return None
+            keyed.append(row["id"])
+        return keyed
 
     def _resolve_plan_day(self, record):
         day_id = _require_ref(record.get("planDayId"), "planDayId")
@@ -324,6 +382,13 @@ class SyncService:
         current = record.get("sessionPlan") or []
         retired = record.get("retiredFocusItems") or []
         now = datetime.now(tz.utc)
+        # (task, position) is unique among active items, so in-place position
+        # swaps would collide. Move every active row to a reserved offset
+        # range first, then assign the final positions.
+        for index, row in enumerate(task.focus_items.filter(retired_at__isnull=True)):
+            if row.position < 1_000_000:
+                row.position = 1_000_000 + index
+                row.save(update_fields=["position"])
         for position, item in enumerate(current):
             PlannedFocusItem.objects.update_or_create(
                 id=item["id"], task=task,

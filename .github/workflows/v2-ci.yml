@@ -147,6 +147,9 @@ jobs:
       - name: Run Focus UI suite in real Chrome
         run: python v2/frontend/tests/run-focus-ui-tests.py
 
+      - name: Run connected sync suite in real Chrome
+        run: python v2/frontend/tests/run-connected-sync-tests.py
+
   django-smoke:
     name: Django smoke tests (Python 3.14)
     runs-on: ubuntu-26.04

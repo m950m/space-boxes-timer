@@ -75,6 +75,48 @@ export function wirePlannedStart(value) {
   return value;
 }
 
+/** The task record exactly as the server task op consumes it. */
+export function wireTaskRecord(task) {
+  if (task === null || typeof task !== "object") {
+    throw new TypeError("A task record is required.");
+  }
+  return { ...task, plannedStart: wirePlannedStart(task.plannedStart) };
+}
+
+/** Canonical planning content of a task in wire shape.
+ *
+ * Change detection for previously synchronized tasks: two records hash equal
+ * only when every applied planning field matches (plan order and item
+ * identity included), so any local edit is detected and bookkeeping fields
+ * (recordRevision, revision, originScopeKey) never fake a change. This is a
+ * canonical string, not a security primitive.
+ */
+export function taskContentHash(task) {
+  const record = wireTaskRecord(task);
+  const orNull = (value) => (value === undefined ? null : value);
+  return JSON.stringify({
+    planDayId: orNull(record.planDayId),
+    title: orNull(record.title),
+    plannedStart: orNull(record.plannedStart),
+    classification: orNull(record.classification),
+    note: orNull(record.note),
+    parentTaskId: orNull(record.parentTaskId),
+    completedAt: orNull(record.completedAt),
+    cancelledAt: orNull(record.cancelledAt),
+    sessionPlan: (record.sessionPlan ?? []).map((item) => [item.id, item.activeMinutes]),
+    retiredFocusItems: (record.retiredFocusItems ?? []).map((item) => item.id).sort(),
+    plannedBreaks: (record.plannedBreaks ?? []).map((row) => [
+      row.id, row.breakMinutes ?? null, row.afterFocusItemId ?? null,
+      row.beforeFocusItemId ?? null, false,
+    ]),
+    retiredPlannedBreaks: (record.retiredPlannedBreaks ?? []).map((row) => [
+      row.id, row.breakMinutes ?? null, row.afterFocusItemId ?? null,
+      row.beforeFocusItemId ?? null, true,
+    ]),
+    resources: (record.resources ?? []).map((row) => [row.url, row.label ?? null]).sort(),
+  });
+}
+
 /** Ordered, independent sync ops for one local scope. */
 export function buildConnectOps({ tasks, focusState }) {
   if (!Array.isArray(tasks)) throw new TypeError("tasks must be an array.");
@@ -91,8 +133,7 @@ export function buildConnectOps({ tasks, focusState }) {
     ops.push({ kind: "plan_day", record: { id: dayId, timezone: focusState.timezone } });
   }
   for (const task of tasks) {
-    ops.push({ kind: "task", baseRevision: 0,
-      record: { ...task, plannedStart: wirePlannedStart(task.plannedStart) } });
+    ops.push({ kind: "task", baseRevision: 0, record: wireTaskRecord(task) });
   }
   ops.push(...buildSessionOps(focusState));
   return ops;

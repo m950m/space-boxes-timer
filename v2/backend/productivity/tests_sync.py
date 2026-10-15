@@ -105,6 +105,90 @@ class TaskSyncTests(TestCase):
         self.assertEqual(stale["results"][0]["status"], "conflict")
         self.assertEqual(stale["results"][0]["record"]["title"], "Second edit")
 
+    def scope_revision(self):
+        from productivity.models import OwnershipScope
+
+        return OwnershipScope.objects.get(pk=self.scope.pk).revision
+
+    def test_identical_update_is_duplicate_without_revision_bump(self):
+        record = task_record()
+        created = push(self.scope, {"kind": "task", "record": record})
+        revision = created["results"][0]["record"]["recordRevision"]
+        before = self.scope_revision()
+        no_op = push(self.scope, {"kind": "task", "baseRevision": revision,
+                                  "record": {**record}})
+        self.assertEqual(no_op["results"][0]["status"], "duplicate")
+        self.assertEqual(no_op["results"][0]["record"]["recordRevision"], revision)
+        self.assertEqual(self.scope_revision(), before,
+                         "a no-op push must not enter the change feed")
+
+    def test_accepted_edit_retried_with_stale_base_is_duplicate_not_conflict(self):
+        # Lost acknowledgement: the first edit was applied server-side but the
+        # client never recorded it. The retry carries the stale base and the
+        # identical content, so the end state already matches.
+        record = task_record()
+        created = push(self.scope, {"kind": "task", "record": record})
+        revision = created["results"][0]["record"]["recordRevision"]
+        edited = push(self.scope, {"kind": "task", "baseRevision": revision,
+                                   "record": {**record, "title": "Second edit"}})
+        self.assertEqual(edited["results"][0]["status"], "accepted")
+        retry = push(self.scope, {"kind": "task", "baseRevision": revision,
+                                  "record": {**record, "title": "Second edit"}})
+        self.assertEqual(retry["results"][0]["status"], "duplicate")
+        self.assertEqual(retry["results"][0]["record"]["title"], "Second edit")
+        self.assertEqual(retry["results"][0]["record"]["recordRevision"], revision + 1)
+
+    def test_content_only_edits_are_new_revisions_not_duplicates(self):
+        record = task_record(resources=[{"url": "https://example.com/a"}])
+        created = push(self.scope, {"kind": "task", "record": record})
+        revision = created["results"][0]["record"]["recordRevision"]
+        before = self.scope_revision()
+        cases = [
+            {**record, "resources": [{"url": "https://example.com/a", "label": "Docs"}]},
+            {**record, "note": "now annotated"},
+            {**record, "completedAt": T0 + 5000},
+            {**record, "sessionPlan": list(reversed(record["sessionPlan"]))},
+        ]
+        for index, changed in enumerate(cases):
+            with self.subTest(case=index):
+                result = push(self.scope, {"kind": "task", "baseRevision": revision,
+                                           "record": changed})
+                self.assertEqual(result["results"][0]["status"], "accepted", result)
+                revision = result["results"][0]["record"]["recordRevision"]
+        self.assertGreater(self.scope_revision(), before,
+                           "each content edit must enter the change feed")
+
+    def test_break_retirement_is_detected_as_content_change(self):
+        break_id = str(uuid.uuid4())
+        record = task_record(sessionPlan=[{"id": str(uuid.uuid4()), "activeMinutes": 25},
+                                          {"id": str(uuid.uuid4()), "activeMinutes": 15}])
+        record["plannedBreaks"] = [{"id": break_id, "breakMinutes": 5,
+                                    "afterFocusItemId": record["sessionPlan"][0]["id"],
+                                    "beforeFocusItemId": record["sessionPlan"][1]["id"]}]
+        created = push(self.scope, {"kind": "task", "record": record})
+        revision = created["results"][0]["record"]["recordRevision"]
+        retired = {**record, "plannedBreaks": [],
+                   "retiredPlannedBreaks": record["plannedBreaks"]}
+        result = push(self.scope, {"kind": "task", "baseRevision": revision, "record": retired})
+        self.assertEqual(result["results"][0]["status"], "accepted", result)
+        payload = result["results"][0]["record"]
+        self.assertEqual([b["id"] for b in payload.get("retiredPlannedBreaks") or []], [break_id])
+
+    def test_pull_returns_session_plan_in_plan_order(self):
+        first, second = str(uuid.uuid4()), str(uuid.uuid4())
+        record = task_record(sessionPlan=[{"id": first, "activeMinutes": 25},
+                                          {"id": second, "activeMinutes": 15}])
+        created = push(self.scope, {"kind": "task", "record": record})
+        revision = created["results"][0]["record"]["recordRevision"]
+        reordered = {**record,
+                     "sessionPlan": [{"id": second, "activeMinutes": 15},
+                                     {"id": first, "activeMinutes": 25}]}
+        push(self.scope, {"kind": "task", "baseRevision": revision, "record": reordered})
+        feed = SyncService(self.scope).pull(0)
+        payload = next(task for task in feed["tasks"] if task["id"] == record["id"])
+        self.assertEqual([item["id"] for item in payload["sessionPlan"]], [second, first],
+                         "pulled plan order must follow stored positions, not record identity")
+
     def test_missing_task_with_nonzero_base_is_conflict(self):
         result = push(self.scope, {"kind": "task", "baseRevision": 3,
                                    "record": task_record()})
