@@ -114,8 +114,8 @@ test("missing or duplicate planned item identities reject", () => {
   }
 });
 
-test("durations must support finite numeric arithmetic", () => {
-  for (const activeMinutes of [undefined, null, "25", NaN, Infinity, -Infinity]) {
+test("durations must support finite numeric arithmetic and positive values", () => {
+  for (const activeMinutes of [undefined, null, "25", NaN, Infinity, -Infinity, 0, -1, -25]) {
     const record = task({ sessionPlan: [{ id: "focus-a", activeMinutes }] });
     rejectUnchanged(record, () => createTaskPlanningRecord(record), "activeMinutes");
   }
