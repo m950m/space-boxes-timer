@@ -1,9 +1,10 @@
 import { createBrowserFocus } from "./browser-focus.js";
-import { getSessionActivity } from "./activity-evidence.js";
+import { getSessionActivity, validateReconciliation } from "./activity-evidence.js";
 
 const unit = (value, name) => `${value} ${name}${value === 1 ? "" : "s"}`;
 const duration = (ms) => {
   const tenths = Math.round(ms / 100);
+  if (tenths === 0) return "0 seconds";
   if (tenths < 600) return tenths === 10 ? "1 second" : `${(tenths / 10).toFixed(1)} seconds`;
   let seconds = Math.round(tenths / 10);
   const hours = Math.floor(seconds / 3600);
@@ -221,7 +222,9 @@ export function mountFocus(store) {
 
   function reconciliationForm(evidence) {
     const form = node("form");
+    form.noValidate = true;
     form.dataset.evidenceId = evidence.id;
+    form.setAttribute("aria-describedby", "focus-error");
     const session = state.sessions.find((item) => item.id === evidence.sessionId);
     const pause = evidence.kind === "pause";
     const fields = node("fieldset");
@@ -245,7 +248,9 @@ export function mountFocus(store) {
     function applyQuick(kind) {
       const seconds = Number(total.value);
       if (total.readOnly === false && (total.value.trim() === "" || !Number.isFinite(seconds) || seconds < 0)) {
+        $("focus-error").textContent = total.validationMessage || "Enter a finite, non-negative interval duration in seconds.";
         total.setAttribute("aria-invalid", "true");
+        total.setAttribute("aria-describedby", "focus-error");
         total.focus();
         return;
       }
@@ -321,7 +326,17 @@ export function mountFocus(store) {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (failed || busy) return;
-      act(() => controller.reconcile({
+      for (const field of form.querySelectorAll("[aria-invalid]")) field.removeAttribute("aria-invalid");
+      const invalid = [...form.elements].find((field) => field.willValidate
+        && (!field.validity.valid || (field.type === "number" && !Number.isFinite(Number(field.value) * 1000))));
+      if (invalid) {
+        $("focus-error").textContent = invalid.validationMessage || "Enter a smaller duration in seconds.";
+        invalid.setAttribute("aria-invalid", "true");
+        invalid.setAttribute("aria-describedby", "focus-error");
+        invalid.focus();
+        return;
+      }
+      const decision = {
         evidenceId: evidence.id,
         elapsedMs: evidence.elapsedMs ?? Number(total.value) * 1000,
         parts: [...parts.children].map((row) => {
@@ -330,7 +345,21 @@ export function mountFocus(store) {
           return { kind, elapsedMs: Number(seconds.value) * 1000,
             ...(kind === "interruption" ? { episodeId: group.value.trim() } : {}) };
         }),
-      }));
+      };
+      try {
+        // Validate explicit input before invoking the controller. Bad form data
+        // must not stop sampling or require a storage/authority recovery.
+        validateReconciliation(evidence, { ...decision, id: crypto.randomUUID(),
+          originContextId: controller.contextId, decidedAt: Date.now() });
+      } catch (error) {
+        $("focus-error").textContent = error.message;
+        const field = parts.querySelector("input[id^=seconds-]") ?? add;
+        field.setAttribute("aria-invalid", "true");
+        field.setAttribute("aria-describedby", "focus-error");
+        field.focus();
+        return;
+      }
+      act(() => controller.reconcile(decision));
     });
     return form;
   }
