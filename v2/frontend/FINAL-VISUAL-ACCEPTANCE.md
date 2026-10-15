@@ -10,18 +10,22 @@ and release readiness remain open.** This report supplements the historical
 ## Revision, ownership and scope
 
 - Verified origin: `https://github.com/m950m/space-boxes-timer.git`.
-- Integration base: `8f8443c211e96d48d0bb97d056f131a29e98beae`, merged PR #52,
-  freshly fetched from `origin/v2` before implementation.
+- Initial base: `8f8443c211e96d48d0bb97d056f131a29e98beae`, merged PR #52.
+  After PRs #53/#54 landed during testing, the final candidate was based on freshly
+  verified `origin/v2` at `a05035741698611d9dc38964cb3375e859a8fab5`.
 - Independent worktree: `~/Learning/projects/Space_boxes_Codex_VisualAcceptance`,
   branch `fix/v2-final-visual-acceptance`. The initial CI checkout stayed on
   `docs/v2-operations-handoff`; no existing worktree was switched or overwritten.
 - Other worktrees were inspected. The former Visual writer explicitly handed
   ownership back in [Issue #11's checkpoint](https://github.com/m950m/space-boxes-timer/issues/11#issuecomment-6164882807).
   Active connected-product backend edits were preserved in their own checkout.
-- Implementation checkpoint: local commit `a5fc560bf23b6f882ba0aa4c2221df9463956ded` (the parent of this report's
-  documentation commit). Tests below ran against its exact source/test contents.
-  A local commit is not a published GitHub checkpoint; publication needs the
-  applicable remote-write authorization and subsequent remote verification.
+- Final implementation checkpoint: `8ddc412d129a54d48be12bcbe1fe967299433c4c`.
+  Original implementation `a5fc560bf23b6f882ba0aa4c2221df9463956ded` and initial
+  documentation are preserved on `fix/v2-final-visual-acceptance-initial`.
+  The owned patch was cherry-picked onto the new base without rebasing, resetting,
+  deleting branches or performing a merge. The final branch retains only scoped
+  presentation changes relative to that base. Publication requires remote SHA
+  verification; a local commit alone is not a GitHub checkpoint.
 - Changes are limited to frontend views, presentation-only startup feedback,
   presentation tests and documentation. No backend, database, synchronization,
   domain, reports calculation or persistence logic changed.
@@ -45,17 +49,17 @@ images inspected by the agent, not physical-device or human usability testing.
 
 | Check | Result and practical coverage |
 | --- | --- |
-| `run-planner-tests.py` | Passed Planner browser/restart coverage plus the expanded **58-check** CI-wired visual suite: trusted keyboard navigation, names/roles, long content, Primary/Extra/subtask focus, 320/375/768/1280px, 200% text, spacing, targets, computed contrast, forced colors, reduced motion and the new focus regressions |
-| `run-final-acceptance-tests.py` with pinned axe and both browsers | **56 presentation checks passed**; Chrome interaction/recovery/error coverage and Firefox initial/error/reflow smoke, described below |
-| `run-focus-ui-tests.py` | **82 passed**: real tabs, recovery, reconciliation, failures, reload and process restart |
-| `run-focus-persistence-tests.py` | **48 passed locally**; this does not resolve the merged revision's remote CI failure |
-| `run-focus-domain-tests.py` | **127 passed**, including reports/planning regressions |
-| `run-browser-tests.py` | **21 passed**, including after the startup-error presentation fix |
+| `run-planner-tests.py` | Passed again on the final implementation: Planner browser/restart coverage plus the expanded **58-check** CI-wired visual suite: trusted keyboard navigation, names/roles, long content, Primary/Extra/subtask focus, 320/375/768/1280px, 200% text, spacing, targets, computed contrast, forced colors, reduced motion and the new focus regressions |
+| `run-final-acceptance-tests.py` with pinned axe and both browsers | **56 presentation checks passed again on the final implementation**; Chrome interaction/recovery/error coverage and Firefox initial/error/reflow smoke, described below |
+| `run-focus-ui-tests.py` | **82 passed again on the final implementation**: real tabs, recovery, reconciliation, failures, reload and process restart |
+| `run-focus-persistence-tests.py` | **48 passed locally on the initial base**; later-base coverage is from its green remote CI |
+| `run-focus-domain-tests.py` | **127 passed on the initial base**, including reports/planning regressions; later domain changes are outside this patch and covered by the later base's CI |
+| `run-browser-tests.py` | **21 passed on the initial base**, including after the startup-error presentation fix; later-base coverage is from its green CI |
 | Python compilation and `git diff --check` | Passed |
 
-Planner/Focus UI regression runs preceded the final startup-error-only change;
-the browser suite and final acceptance suite tested that change. The new runner
-is an explicit acceptance command; existing CI still invokes the 58-check visual
+The final Planner, Focus UI and final acceptance runs include the startup-error
+fix and the latest base's Account UI. The new runner is an explicit acceptance
+command; existing CI still invokes the 58-check visual
 suite through Planner. No CI configuration or shared runner was changed.
 
 The final Chrome flow tests invalid/save feedback, Start/Pause/End focus,
@@ -105,10 +109,18 @@ or its cause. The committed Firefox smoke deliberately makes no keyboard claim.
 Manual Firefox keyboard reproduction is still needed; this is not classified
 as either a confirmed product defect or a proven harness-only defect.
 
-Raw local evidence is under `/tmp/space-boxes-final-visual/`: `verified-run.log`,
-`final/*.json`, `final/*.png` and `final/manifest.json` (artifact SHA256s).
+Raw local evidence is under `/tmp/space-boxes-final-visual/`: final candidate
+logs `candidate-final.log`, `candidate-planner.log`, `candidate-focus-ui.log`,
+and `candidate/*.json`, `candidate/*.png`, `candidate/manifest.json` (artifact
+SHA256s). The earlier-base artifacts are separately retained under `final/`.
 These temporary files are not published or committed; rerun the commands below
 to produce durable review artifacts for the release candidate.
+
+Local probe cleanup limitation: an early disposable Snap Firefox probe could
+not be terminated after its BiDi connection closed (OS signal denied), leaving
+task-owned PID 18635, debugging port 35185. Its disposable profile was removed;
+no normal user browser profile was used. The final runner closes its owning
+BiDi browser before releasing the connection and completed cleanup successfully.
 
 ## Remote CI and integration update
 
@@ -131,10 +143,11 @@ including the added Account panel's reflow/contrast and actual 100/200/400% zoom
 and four Chrome axe audits with zero violations. Its temporary artifacts are in
 `/tmp/space-boxes-final-visual/current-a050357`.
 
-The owner has approved publication and shared-file handoff for this independent
-workstream. Integration onto the new base and candidate checks follow this
-initial evidence checkpoint; the earlier results must not be represented as
-full validation of the later connected-product implementation.
+The owner explicitly approved publication and shared-file handoff for this
+independent workstream. Integration onto the new base and the three affected
+candidate suites passed as recorded above. No full connected-product validation
+is inferred from the presentation checks. The new PR still needs its own exact
+head SHA checks; base CI does not prove the candidate's CI result.
 
 ## Repeatable release verification
 
@@ -194,10 +207,13 @@ the following human evidence on the exact candidate:
 The original head/three-box assets, Primary opening/release treatment and Extra/
 subtask representation still need exact owner visual approval; see the prepared
 [artwork integration brief](ARTWORK-INTEGRATION.md). No substitute was installed.
-Human AT/touch acceptance, Firefox keyboard reproduction and the failing merged
-CI require evidence/work, not invented approvals. Safari and human screen-reader
+Human AT/touch acceptance and Firefox keyboard reproduction require evidence/work,
+not invented approvals. Safari and human screen-reader
 testing were unavailable in this environment. No full WCAG or public V2 release
 claim is made; connected-product release validation belongs to its workstream.
+In particular, the [tracked post-sync task-edit gap](https://github.com/m950m/space-boxes-timer/issues/11#issuecomment-6180699414)
+prevents a claim that connected synchronization is fully complete; its repair
+is outside this presentation patch.
 
 Publication and handoff were explicitly approved by the owner in this session.
 Merge, production release and deployment remain human
