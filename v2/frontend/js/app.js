@@ -710,6 +710,12 @@ planningStore.then(async (opened) => {
 }).catch((error) => {
   setBusy(false);
   $("focus-status").textContent = "Error — saved focus could not be loaded.";
-  $("focus-error").textContent = error.message;
+  const retry = `${error.message} Reload this page to retry.`;
+  $("focus-error").textContent = retry;
   $("focus-panel").setAttribute("aria-busy", "false");
+  $("focus-clock").hidden = true;
+  $("reports-status").textContent = "Error — recorded activity could not be loaded.";
+  $("reports-error").textContent = retry;
+  $("reports-output").setAttribute("aria-busy", "false");
+  $("reports-refresh").disabled = true;
 });
