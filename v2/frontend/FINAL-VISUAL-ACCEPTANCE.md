@@ -54,7 +54,7 @@ images inspected by the agent, not physical-device or human usability testing.
 | `run-focus-ui-tests.py` | **82 passed again on the final implementation**: real tabs, recovery, reconciliation, failures, reload and process restart |
 | `run-focus-persistence-tests.py` | **48 passed locally on the initial base**; later-base coverage is from its green remote CI |
 | `run-focus-domain-tests.py` | **127 passed on the initial base**, including reports/planning regressions; later domain changes are outside this patch and covered by the later base's CI |
-| `run-browser-tests.py` | **21 passed on the initial base**, including after the startup-error presentation fix; later-base coverage is from its green CI |
+| `run-browser-tests.py` | **21 passed again on the final candidate**, including process restart, when investigating the candidate CI failure described below |
 | Python compilation and `git diff --check` | Passed |
 
 The final Planner, Focus UI and final acceptance runs include the startup-error
@@ -149,6 +149,18 @@ candidate suites passed as recorded above. No full connected-product validation
 is inferred from the presentation checks. The new PR still needs its own exact
 head SHA checks; base CI does not prove the candidate's CI result.
 
+**Candidate CI failure:** [PR #56](https://github.com/m950m/space-boxes-timer/pull/56)
+at `62e6df23c1f4ec3d1c4687caa50f79452134bc4e` failed
+[run 38677963517](https://github.com/m950m/space-boxes-timer/actions/runs/38677963517)
+in `run-browser-tests.py`, process restart assertion `Restart local identity lost`
+(`persistence.test.js:384`). Planner and later browser steps were skipped.
+The other three jobs passed. The persistence suite, runner and persistence
+implementation are unchanged by this patch; a targeted local rerun passed all
+21 checks including that restart. Cause is unresolved, not proven flaky. Repair
+belongs to the persistence/CI owner. No test assertion was weakened and no rerun
+was manually requested. This documentation update may trigger a new CI run;
+consult the PR and Issue #11 handoff for its exact-head outcome before approval.
+
 ## Repeatable release verification
 
 From a clean, authorized candidate checkout, record the exact SHA and remote
@@ -208,7 +220,8 @@ The original head/three-box assets, Primary opening/release treatment and Extra/
 subtask representation still need exact owner visual approval; see the prepared
 [artwork integration brief](ARTWORK-INTEGRATION.md). No substitute was installed.
 Human AT/touch acceptance and Firefox keyboard reproduction require evidence/work,
-not invented approvals. Safari and human screen-reader
+not invented approvals. A passing exact-head CI result is also required; the
+candidate failure above cannot be waived by local success. Safari and human screen-reader
 testing were unavailable in this environment. No full WCAG or public V2 release
 claim is made; connected-product release validation belongs to its workstream.
 In particular, the [tracked post-sync task-edit gap](https://github.com/m950m/space-boxes-timer/issues/11#issuecomment-6180699414)
