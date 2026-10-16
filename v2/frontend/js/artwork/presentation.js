@@ -3,9 +3,10 @@
 // focus-view render per ARTWORK-INTEGRATION.md; this module adds no timers,
 // no persistence, no lifecycle control and never intercepts input.
 //
-// It stays dormant in production: assets resolve from globalThis.SpaceBoxesArtwork,
-// which only evaluation entries register before the app modules load. With no
-// registry both hosts remain exactly as shipped — empty, hidden, aria-hidden.
+// Assets resolve from globalThis.SpaceBoxesArtwork, registered by the
+// production registry (js/artwork/registry.js, Artwork v1, owner-approved
+// 2026-10-17) loaded before the app modules. With no registry — e.g. a host
+// page that omits it — both hosts remain empty, hidden and aria-hidden.
 
 const PRIMARY_HOST = "primary-artwork";
 const EXTRA_HOST = "extra-artwork";

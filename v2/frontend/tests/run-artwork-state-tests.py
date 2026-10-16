@@ -1,12 +1,11 @@
 """Chrome-only functional checks for the integrated artwork state mapping.
 
-Drives the production index.html with the evaluation registry injected, so the
-real planning forms, focus controller and projections decide every artwork
-state: idle, planning 0-3, active Primary focus bound to the active task's
-slot, pause, Extra/subtask badge (never a fourth box), early end without
-completion, and completion only through the explicit task decision.
-Run-artwork-integration-tests.py separately proves the same page stays dormant
-without the registry.
+Drives the production index.html, which self-registers the approved Artwork v1
+registry (js/artwork/registry.js): the real planning forms, focus controller and
+projections decide every artwork state — idle, planning 0-3, active Primary
+focus bound to the active task's slot, pause, Extra/subtask badge (never a
+fourth box), early end without completion, and completion only through the
+explicit task decision.
 """
 
 import functools
@@ -24,8 +23,6 @@ v = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(v)
 h = v.helpers
 fill, click, key, wait = h.fill, h.click, h.key, h.wait
-
-REGISTRY_SOURCE = (ROOT / "js/artwork/evaluation-registry.js").read_text(encoding="utf-8")
 
 
 def select_session_by_title(client, title):
@@ -58,10 +55,11 @@ def assert_primary(client, filename, label):
 
 
 def suite(client, url):
-    client.call("Page.addScriptToEvaluateOnNewDocument", source=REGISTRY_SOURCE)
     client.call("Page.navigate", url=url)
-    wait(client, "!document.querySelector('#editor-fields').disabled")
+    wait(client, "!!document.querySelector('#editor-fields') && !document.querySelector('#editor-fields').disabled")
     client.evaluate("import('/js/app.js').then(async m => window.store = await m.planningStore)")
+    v.check(client, "globalThis.SpaceBoxesArtwork?.registry === 'character-artwork/v1-approved'",
+            "production page registers the approved Artwork v1 registry")
 
     v.check(client, """(() => { const e = document.getElementById('primary-artwork');
       return e.querySelector('img')?.getAttribute('src').includes('sb-head-idle.svg')
@@ -153,23 +151,6 @@ def suite(client, url):
                 f"no horizontal overflow with active artwork at {width}px / 200% text")
     client.call("Emulation.setDeviceMetricsOverride", width=1280, height=900, deviceScaleFactor=1, mobile=False)
     client.evaluate("document.documentElement.style.fontSize = ''")
-
-    # Drift guard: the evaluation entry mirrors the production element structure.
-    # Runtime ids embed random UUIDs (duration-<uuid> editor rows); compare their
-    # stable prefixes only.
-    ids = lambda: client.evaluate(
-        "[...document.querySelectorAll('[id]')].map(e => e.id.replace(/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,'-*')).sort().join(',')")
-    ready = "!!document.querySelector('#editor-fields') && !document.querySelector('#editor-fields').disabled"
-    client.call("Page.navigate", url=url.replace("index.html", "artwork-integrated.html"))
-    wait(client, ready)
-    v.check(client, "globalThis.SpaceBoxesArtwork?.registry === 'character-prototype/evaluation' && !!document.querySelector('#primary-artwork img')?.src",
-            "evaluation entry self-registers the prototype registry")
-    integrated_ids = ids()
-    client.call("Page.navigate", url=url)
-    wait(client, ready)
-    if ids() != integrated_ids:
-        raise AssertionError("artwork-integrated.html element ids diverge from index.html; regenerate the evaluation copy")
-    print("PASS evaluation entry element ids match the production page", flush=True)
 
     if client.errors:
         raise AssertionError(client.errors)
