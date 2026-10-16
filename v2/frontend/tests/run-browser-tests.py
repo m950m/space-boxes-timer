@@ -62,8 +62,11 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         with tempfile.TemporaryDirectory(prefix="v2-idb-browser-", ignore_cleanup_errors=True) as profile:
+            previous_process = None
             for phase in ("suite", "restart"):
                 received.clear()
+                if previous_process is not None:
+                    wait_for_profile_release(profile, previous_process)
                 with tempfile.TemporaryFile(mode="w+") as log:
                     command = [browser, "--headless", "--disable-gpu", "--no-first-run",
                                "--no-default-browser-check", f"--user-data-dir={profile}",
@@ -80,6 +83,7 @@ def main():
                         except subprocess.TimeoutExpired:
                             process.kill()
                             process.wait()
+                previous_process = process
                 report = reports[-1]
                 for result in report["checks"]:
                     print(result)
