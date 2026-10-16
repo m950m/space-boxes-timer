@@ -5,17 +5,20 @@ reachable PostgreSQL role with CREATEDB; uses SPACE_BOXES_DB_* connection vars.
 No existing database is migrated, written or restored. Logs remain in /tmp.
 """
 
+import argparse
 import contextlib
 import http.cookiejar
 import json
 import os
 from pathlib import Path
 import secrets
+import re
 import shutil
 import socket
 import ssl
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -30,13 +33,42 @@ MANAGE = ROOT / "v2/backend/manage.py"
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rollback-ref", required=True,
+                        help="Compatible ancestor commit containing the release launcher")
+    parser.add_argument("--pg-bin", type=Path,
+                        help="Directory containing pg_dump/pg_restore matching the server major")
+    args = parser.parse_args()
     if sys.version_info[:2] != (3, 14):
         raise RuntimeError("Python 3.14 required")
-    for tool in ("openssl", "pg_dump", "pg_restore"):
+    pg_tools = {tool: str(args.pg_bin / tool) if args.pg_bin else tool
+                for tool in ("pg_dump", "pg_restore")}
+    for tool in ("openssl", *pg_tools.values()):
         if not shutil.which(tool):
             raise RuntimeError(f"Required tool unavailable: {tool}")
     logs = Path(tempfile.mkdtemp(prefix="space-boxes-release-"))
     print(f"Logs: {logs}", flush=True)
+    rollback_ref = subprocess.check_output(
+        ["git", "rev-parse", "--verify", f"{args.rollback_ref}^{{commit}}"],
+        cwd=ROOT, text=True,
+    ).strip()
+    subprocess.run(["git", "merge-base", "--is-ancestor", rollback_ref, "HEAD"],
+                   cwd=ROOT, check=True)
+    rollback_root = logs / "rollback"
+    archive = logs / "rollback.tar"
+    subprocess.run(["git", "archive", "--format=tar", "--output", str(archive),
+                    rollback_ref, "v2"], cwd=ROOT, check=True)
+    with tarfile.open(archive) as source:
+        source.extractall(rollback_root, filter="data")
+    if not (rollback_root / "v2/scripts/start-staging.sh").is_file():
+        raise RuntimeError("Rollback revision must contain the release launcher")
+    # This bounded rehearsal reuses the environment only for an unchanged runtime contract.
+    for name in ("requirements.txt", "requirements-release.txt"):
+        previous = rollback_root / "v2" / name
+        if previous.exists() and previous.read_bytes() != (ROOT / "v2" / name).read_bytes():
+            raise RuntimeError("Changed rollback dependencies require a separately prepared environment")
+    (rollback_root / "v2/.venv").symlink_to(ROOT / "v2/.venv", target_is_directory=True)
+    print(f"Rollback revision: {rollback_ref}", flush=True)
     db_name = "sb_release_" + secrets.token_hex(6)
     restore_name = db_name + "_restore"
     db = {
@@ -63,6 +95,12 @@ def main():
     process = None
     created = []
     with psycopg.connect(dbname="postgres", autocommit=True, **db) as admin:
+        server_major = admin.info.server_version // 10000
+        for tool in pg_tools.values():
+            version = subprocess.check_output([tool, "--version"], text=True)
+            match = re.search(r"\(PostgreSQL\) (\d+)", version)
+            if not match or int(match[1]) != server_major:
+                raise RuntimeError(f"{tool} must match PostgreSQL server major {server_major}")
         try:
             for name in (db_name, restore_name):
                 admin.execute(sql.SQL("CREATE DATABASE {} ").format(sql.Identifier(name)))
@@ -111,13 +149,16 @@ def main():
                     except urllib.error.HTTPError as error:
                         return error
 
-                with (logs / "server.log").open("w") as server_log:
-                    process = subprocess.Popen(["sh", "v2/scripts/start-staging.sh"], cwd=ROOT,
-                                               env=env, stdout=server_log, stderr=subprocess.STDOUT)
+                def start_server(checkout, environment, log_path):
+                    nonlocal process
+                    with log_path.open("w") as server_log:
+                        process = subprocess.Popen(["sh", "v2/scripts/start-staging.sh"],
+                                                   cwd=checkout, env=environment,
+                                                   stdout=server_log, stderr=subprocess.STDOUT)
                     deadline = time.monotonic() + 30
                     while True:
                         if process.poll() is not None:
-                            raise RuntimeError(f"Staging startup exited; see {logs / 'server.log'}")
+                            raise RuntimeError(f"Staging startup exited; see {log_path}")
                         try:
                             with request("/") as response:
                                 assert response.status == 200
@@ -128,6 +169,15 @@ def main():
                             if time.monotonic() >= deadline:
                                 raise RuntimeError("Staging readiness timeout")
                             time.sleep(.1)
+
+                def stop_server():
+                    nonlocal process
+                    process.terminate()
+                    process.wait(timeout=15)
+                    process = None
+
+                start_server(ROOT, env, logs / "server.log")
+                try:
                     print("PASS real Gunicorn TLS startup, deploy checks and frontend", flush=True)
                     for path, mime in (("/js/app.js", "javascript"),
                                        ("/js/persistence/planning-store.js", "javascript"),
@@ -162,21 +212,33 @@ def main():
                     with request("/", headers={"Host": "evil.invalid"}) as response:
                         assert response.status == 400
                     print("PASS real account/session, Secure/HttpOnly cookie, CSRF and host enforcement", flush=True)
-                    process.terminate()
-                    process.wait(timeout=15)
-                    process = None
+                finally:
+                    stop_server()
 
                 pg_env = {**env, "PGHOST": db["host"], "PGPORT": db["port"],
                           "PGUSER": db["user"], "PGPASSWORD": db["password"], "PGSSLMODE": db["sslmode"]}
                 backup = logs / "database.dump"
-                for args in (["pg_dump", "--format=custom", "--no-owner", "--no-acl", "--file", str(backup), db_name],
-                             ["pg_restore", "--exit-on-error", "--no-owner", "--no-acl", "--dbname", restore_name, str(backup)]):
+                for args in ([pg_tools["pg_dump"], "--format=custom", "--no-owner", "--no-acl", "--file", str(backup), db_name],
+                             [pg_tools["pg_restore"], "--exit-on-error", "--no-owner", "--no-acl", "--dbname", restore_name, str(backup)]):
                     subprocess.run(args, env=pg_env, check=True, stdout=log,
                                    stderr=subprocess.STDOUT, timeout=60)
                 with psycopg.connect(dbname=restore_name, **db) as conn:
                     assert conn.execute("SELECT count(*) FROM django_migrations").fetchone()[0] == migration_count
                     assert conn.execute("SELECT count(*) FROM accounts_user WHERE email = 'release@example.invalid'").fetchone()[0] == 1
                 print("PASS PostgreSQL dump/isolated restore preserves migrations and account", flush=True)
+                # Roll back code and data together in isolation; retain the signed session.
+                rollback_env = {**env, "SPACE_BOXES_DB_NAME": restore_name}
+                start_server(rollback_root, rollback_env, logs / "rollback-server.log")
+                try:
+                    with request("/api/v2/accounts/me") as response:
+                        assert response.status == 200
+                        assert b"release@example.invalid" in response.read()
+                    with request("/js/app.js") as response:
+                        assert response.status == 200
+                        assert response.read() == (rollback_root / "v2/frontend/js/app.js").read_bytes()
+                finally:
+                    stop_server()
+                print("PASS previous code starts against isolated restore with session and assets intact", flush=True)
         finally:
             if process is not None:
                 process.terminate()

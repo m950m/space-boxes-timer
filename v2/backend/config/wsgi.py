@@ -8,6 +8,8 @@ from django.core.exceptions import ImproperlyConfigured
 from whitenoise import WhiteNoise
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+# Direct WSGI startup must not silently use development settings.
+os.environ.setdefault("DJANGO_DEBUG", "0")
 application = get_wsgi_application()
 
 if not settings.DEBUG:

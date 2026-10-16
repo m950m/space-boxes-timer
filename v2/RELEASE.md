@@ -2,16 +2,22 @@
 
 This prepares the existing Django monolith for a release candidate. It selects
 no hosting provider and performs no deployment. Python **3.14**, Django **5.2.18**
-and PostgreSQL remain the approved runtime; Gunicorn **26.2.0** runs WSGI and
+and PostgreSQL retain the existing runtime choices; Gunicorn **26.2.0** runs WSGI and
 WhiteNoise **6.12.0** serves collected assets. No frontend build is required.
-Dependencies are pinned in `requirements.txt`; transitive dependencies resolve
-through pip. Runtime selection does not provision infrastructure.
+Direct dependencies are pinned in `requirements.txt`. The release lock
+`requirements-release.txt` also pins every transitive dependency and wheel hash
+for **CPython 3.14, Linux x86_64, glibc >= 2.17**. Other platforms require a reviewed
+artifact lock; this staging target does not select hosting.
 
 The owner's bounded release-preparation task assigns this writer settings,
 release startup/verification, tests and operations documentation in the existing
-`Space_boxes_Codex` worktree, on `feature/v2-release-preparation` from freshly
-fetched `origin/v2` **9b55a12baab6619479f22fe151dddd2a03f3dccc**. The checkout was
-clean and no open PR overlapped this scope. No other worktree is modified.
+`Space_boxes_Codex_ReleaseEngineering` worktree, on
+`feature/v2-release-engineering-delivery` from freshly fetched `origin/v2`
+**2e9d73dab33ceedb4000f546c7317ee8ae36c56e**. The checkout was clean and no open
+PR overlapped this scope. Earlier local release work at
+`71f4e38c4c611c334c0776610357c3428878cce6` was preserved and cherry-picked as
+`671838b004ea64f9f325f59325d6fa5f026c805c`. No other worktree is modified;
+Zcode browser runners and Antigravity QA harnesses are outside this assignment.
 Local branch creation/commits are authorized; publication is not recorded for
 this workstream. The [workflow](../_docs/agents/v2-agent-workflow.md),
 [architecture](../_docs/architecture/architecture.md) (sections 4, 8, 9, 15–16),
@@ -62,7 +68,7 @@ From the repository root, using Python 3.14:
 
 ```bash
 python3 -m venv v2/.venv
-v2/.venv/bin/pip install -r v2/requirements.txt
+v2/.venv/bin/pip install -r v2/requirements-release.txt
 v2/.venv/bin/pip check
 # Export the environment above before these commands.
 v2/.venv/bin/python v2/backend/manage.py check --deploy --fail-level ERROR
@@ -91,6 +97,33 @@ Assets revalidate (`max-age=0`) because their URLs are not fingerprinted. Startu
 fails when essential collected assets are absent. The HTML and APIs pass through
 Django security middleware; a hosting TLS boundary must also handle plain HTTP
 and static requests. The release entrypoint is **WSGI**, not `config.asgi`.
+Direct WSGI startup defaults to release mode and requires release credentials;
+development `runserver` still uses explicit/default development settings.
+
+## Packaging
+
+Package a committed revision, rather than the working directory. From the repo
+root, choose an existing private output directory and an exact commit:
+
+```bash
+RELEASE_REF=$(git rev-parse HEAD)
+git archive --format=tar --prefix=space-boxes-v2/ --output=/private/release/source.tar "$RELEASE_REF" v2
+gzip -n /private/release/source.tar
+sha256sum /private/release/source.tar.gz
+v2/.venv/bin/pip download -r v2/requirements-release.txt --dest /private/release/wheels
+# On the same Python/OS/architecture, install without registry access:
+v2/.venv/bin/pip install --no-index --find-links=/private/release/wheels -r v2/requirements-release.txt
+```
+
+`git archive` includes only committed `v2/` files: no V1 files, local environment,
+venv, collected assets or database dumps. `gzip -n` omits variable name/time
+metadata. Preserve the commit, archive checksum, lock and wheels together;
+collect static assets at startup. No registry service or container is required.
+
+For dependency updates, review direct pins and resolved transitive versions in a
+clean matching environment, download only wheels, and use `pip hash` on each
+artifact to update the lock. Reinstall from that lock and run `pip check`, backend
+tests and the staging rehearsal. Startup must not resolve unbounded dependencies.
 
 ## Reproducible local verification
 
@@ -100,7 +133,9 @@ with CREATEDB, export `SPACE_BOXES_DB_HOST/PORT/USER/PASSWORD` and, for a local
 non-TLS database only, `SPACE_BOXES_DB_SSLMODE=disable`:
 
 ```bash
-v2/.venv/bin/python v2/scripts/verify-staging.py
+v2/.venv/bin/python v2/scripts/verify-staging.py \
+  --rollback-ref 671838b004ea64f9f325f59325d6fa5f026c805c \
+  --pg-bin /usr/lib/postgresql/16/bin
 ```
 
 The verifier generates its own release secret and localhost TLS certificate,
@@ -108,7 +143,15 @@ creates two random databases, migrates an empty schema, checks model drift,
 proves an unmigrated database prevents startup, and runs the shipped launcher.
 It trusts only its generated certificate and exercises real HTTPS document,
 module/admin asset, host, CSRF, registration and session requests. It then dumps
-and restores the migrated account into the second database and verifies it.
+and restores the migrated account into the second database. Finally it extracts
+the specified ancestor revision into its private temporary directory, recollects
+that revision's assets, starts its actual launcher against the restored database,
+and verifies the recovered signed-in session and module bytes over HTTPS.
+The rollback revision must contain the release launcher and use unchanged
+runtime requirements; changed dependencies require a separately prepared
+environment. This proves this compatible rollback pair, not arbitrary schema
+reversals. Client majors are checked before database creation; `--pg-bin` is
+optional when matching tools already appear on PATH.
 It always removes its own databases; it never migrates an existing database.
 Logs and synthetic backup/certificate artifacts remain in the printed private
 `/tmp/space-boxes-release-*` directory. No SMTP delivery or production data is used.
@@ -151,7 +194,9 @@ checks and staging smoke with the matching application revision against that
 database. Retain the exact code commit and a protected copy of the corresponding
 configuration separately from the dump. `--no-owner/--no-acl` deliberately omits
 role grants; the owner must separately preserve/reapply necessary roles and
-privileges. The automated verifier exercises this dump/restore path locally.
+privileges. The automated verifier exercises this dump/restore and previous-code
+startup path locally, including persisted session validity. Its synthetic session
+is intentionally retained; this does not approve restoring revoked real sessions.
 
 This batch adds no migrations. For a code rollback, stop the candidate process,
 prepare the last known compatible revision in an authorized separate checkout,
@@ -166,45 +211,51 @@ before exposing a restored instance. No retention or legal policy is invented.
 
 ## Remaining owner decisions and release gates
 
-Hosting/runtime supervision, domain/TLS/proxy boundary, PostgreSQL credentials
-and transport, recovery-mail relay and verified delivery, backup policy/storage
-and recovery ownership remain operator/owner work. Report scheduling is still
-unimplemented, as recorded in README; this batch does not supply infrastructure.
-Original artwork and human accessibility/device/Firefox acceptance remain
-governed by [the visual acceptance record](frontend/FINAL-VISUAL-ACCEPTANCE.md).
+| Decision/gate | Exact unresolved scope |
+| --- | --- |
+| Hosting and operations | Provider, region, budget, supervision/restarts, health monitoring, capacity, traffic switch and operational owner. No provider is selected or provisioned. |
+| Domain and TLS | Domain, certificate renewal, trusted proxy/network boundary, HTTP/static redirects and HSTS subdomain/preload commitment. Preserve same-origin frontend/API. |
+| Secrets and database | Secret creation/storage/rotation and access owners; dedicated V2 database/roles, endpoint/port, server version and verified TLS/root CA. Local tests use isolated databases. |
+| Recovery mail | Relay/provider, sender/domain authentication, TLS/credentials and verified real delivery. These checks send no live mail. |
+| Backup and recovery | Storage/encryption, schedule/retention, restore owner, RPO/RTO, role grants and deletion/revocation propagation before restored data serves users. No policy is invented. |
+| Release acceptance | Exact candidate and release authorization; original artwork approval, human screen-reader and physical touch/device validation. Firefox visible-focus acceptance remains environment-blocked; IndexedDB restart intermittency remains open per the baseline's PR #60 checkpoint. |
+| Report delivery | Preferences exist; scheduler, retry/deduplication operations, timing and delivery remain unimplemented. No queue/provider is selected. |
+
+Visual gates remain governed by
+[the visual acceptance record](frontend/FINAL-VISUAL-ACCEPTANCE.md) and current
+[delivery tracker](https://github.com/m950m/space-boxes-timer/issues/11).
 Local checks do not grant production readiness or deployment authorization.
 
-## Executed validation — 2026-10-16
+## Executed validation — 2026-10-16, this delivery
 
-- Python 3.14.4, Django 5.2.18, PostgreSQL 16.15; Gunicorn 26.2.0 and
-  WhiteNoise 6.12.0 installed from the pinned requirements. `pip check` passed.
-- `manage.py test config accounts productivity`: **93 tests passed** (14
-  configuration/HTTP smoke and release tests, 79 connected backend regressions).
-  Log: `/tmp/space-boxes-release-tests.log`.
-- `PATH="/usr/lib/postgresql/16/bin:$PATH" v2/.venv/bin/python
-  v2/scripts/verify-staging.py`: **all seven verification groups passed**, including
-  actual foreground Gunicorn/HTTPS, deployment checks, fresh migrations/no model
-  drift, rejected unmigrated startup, collected assets/private-path exclusion,
-  real account/session/CSRF/host enforcement, and dump/restore into a second
-  isolated database. Both disposable databases were removed. Logs:
-  `/tmp/space-boxes-release-staging.log` and
-  `/tmp/space-boxes-release-7eaxccec/{commands,server}.log`.
+- A fresh Python 3.14.4 venv installed all seven hash-checked release wheels
+  without registry access; `pip check` passed. Runtime versions are recorded in
+  the lock. PostgreSQL 16 was used with matching v16 client tools.
+- `manage.py test config accounts productivity --noinput`: **95 tests passed**,
+  including direct-WSGI fail-closed and explicit development regressions.
+- The verifier command above: **all eight verification groups passed** with
+  real Gunicorn/HTTPS, fresh migrations/no model drift, rejected unmigrated
+  startup, asset/private-path boundaries, session/CSRF/host enforcement,
+  PostgreSQL dump/restore, and older-code startup against restored data.
+  Both disposable databases were removed. Private logs and synthetic artifacts:
+  `/tmp/space-boxes-release-_3hpn4l0/{commands,server,rollback-server}.log`.
 - Deployment checks reported only the two documented HSTS domain advisories,
   `security.W005` and `security.W021`; zero checks silenced. A test asserts that
   these are the only deployment findings. No new domain policy was selected.
-- `sh -n`, whitespace and V1 isolation checks passed. The actual diff was reviewed
-  against release scope, security behavior, startup failures and documentation.
-  All ten changed files are inside `v2/`; no frontend/domain/schema changes.
-- Initial validation found missing clickjacking middleware; it was added and
-  the affected tests passed afterward. The verifier's registration expectation
-  was corrected to the API's existing **201** contract. The system's default
-  PostgreSQL 18 dump client produced a restore-incompatible dump for the local
-  PostgreSQL 16 server; selecting matching installed v16 clients resolved it on
-  the next bounded attempt, without filtering SQL or weakening restore errors.
+- Python compilation, shell syntax, whitespace and V1 isolation checks passed.
+  The actual diff was reviewed against release scope and security boundaries.
+  All delivery files are inside `v2/`; no frontend/domain/schema changes or edits
+  to other writers' runners are included.
 - No browser suite was repeated because frontend behavior is unchanged. Actual
   SMTP delivery, external TLS/proxy behavior, production restoration/cutover and
   the existing human visual/accessibility gates were not executed. No remote CI
   run is claimed for this unpublished branch.
 
-Implementation references: [Django deployment checklist](https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/)
+Implementation references: [Django deployment checklist](https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/),
+[repeatable pip installs](https://pip.pypa.io/en/stable/topics/repeatable-installs/),
+[PostgreSQL 16 pg_dump](https://www.postgresql.org/docs/16/app-pgdump.html)
 and [WhiteNoise WSGI API](https://whitenoise.readthedocs.io/en/stable/base.html).
+
+Implementation and local validation are complete; scoped ownership returns to
+the owner for review/publication. Local commits are not a remote handoff. No
+push/PR, merge, deployment or branch deletion is authorized by this record.

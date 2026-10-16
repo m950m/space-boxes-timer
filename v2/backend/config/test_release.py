@@ -105,6 +105,16 @@ class ReleaseSettingsTests(SimpleTestCase):
         self.assertFalse(config["SESSION_COOKIE_SECURE"])
         self.assertFalse(config["SECURE_SSL_REDIRECT"])
 
+    def test_direct_wsgi_startup_requires_release_configuration_by_default(self):
+        result = self.load_settings({"DJANGO_DEBUG": None, "DJANGO_SECRET_KEY": None},
+                                    code="import config.wsgi")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("DJANGO_SECRET_KEY", result.stderr)
+
+    def test_explicit_development_wsgi_still_works(self):
+        result = self.load_settings({"DJANGO_DEBUG": "1"}, code="import config.wsgi")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 @override_settings(DEBUG=False, ALLOWED_HOSTS=["testserver"], SECURE_SSL_REDIRECT=True,
                    SECURE_PROXY_SSL_HEADER=None, SESSION_COOKIE_SECURE=True,
