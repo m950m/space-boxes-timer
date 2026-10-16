@@ -1,8 +1,24 @@
 # Original artwork integration brief
 
-Status: **prepared for owner visual review; no exact artwork approved or installed**.
+Status: **Artwork v1 owner-approved 2026-10-17 and activated in the production
+entry** (see the approval record below and
+[ARTWORK-PREVIEW.md](ARTWORK-PREVIEW.md)).
 This implements no deferred policy. [OD-023 and OD-027](../../_docs/product/owner-decisions.md)
 and [FR-VISUAL-001/002, AC-010/022](../../_docs/product/v2-prd.md) remain authoritative.
+
+> **Approval record (2026-10-17).** The owner approved Artwork v1: the exact
+> original SVG assets inventoried in [ARTWORK-PREVIEW.md](ARTWORK-PREVIEW.md),
+> the real-application state mapping from commit `07203ef`, Primary slot
+> numerals 1–3 bound to visible card order with stable task-ID association, the
+> Extra/subtask active-focus badge (no fourth Primary box), activation in BOTH
+> the Planner and Focus presentation areas, and completion semantics
+> (COMPLETE only after explicit task-completion decisions for all relevant
+> Primary tasks; ending a focus session alone never triggers COMPLETE).
+> Accessibility, reduced-motion and responsive requirements remain mandatory.
+> The pre-approval checkpoint text below is retained as history: its
+> "no exact artwork approved / keep hosts empty" statements are superseded by
+> this approval, while the placement, accessibility, mounting and verification
+> requirements remain in force.
 
 ## One consolidated owner review
 

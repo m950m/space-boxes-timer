@@ -146,7 +146,7 @@ def suite(client, url, screenshots):
     for href, heading in [("#plans-heading", "plans-heading"), ("#focus-heading", "focus-heading"), ("#reports-heading", "reports-heading")]:
         activate(client, f'nav a[href="{href}"]')
         check(client, f"document.activeElement.id === '{heading}'", f"native navigation focuses {heading}")
-    check(client, "document.querySelector('#primary-artwork').hidden && document.querySelectorAll('#primary-artwork *').length === 0", "unapproved artwork remains isolated and absent")
+    check(client, "(() => { const host = document.querySelector('#primary-artwork'); const image = host && host.querySelector('img'); return host.hidden === false && host.getAttribute('aria-hidden') === 'true' && image && image.src.includes('sb-head-idle.svg') && image.alt === '' && getComputedStyle(host).pointerEvents === 'none'; })()", "approved Artwork v1 mounts decoratively through the production registry")
     check(client, "document.querySelector('#reports-output').getAttribute('aria-busy') === 'false'", "report read exposes settled busy state")
     activate(client, "#reports-refresh")
     wait(client, "document.querySelector('#reports-output').getAttribute('aria-busy') === 'false'")
@@ -258,7 +258,7 @@ def suite(client, url, screenshots):
         }})()""")
         activate(client, "#focus-start")
         wait(client, "document.querySelector('#focus-clock').dataset.state === 'running'")
-        check(client, "document.querySelector('#focus-task-title').textContent === " + json.dumps(title) + " && document.querySelector('#focus-status').textContent.includes('Running') && document.querySelectorAll('#primary-tasks article').length === 1 && document.querySelector('#primary-artwork').hidden", f"{title} has explicit active-focus text outside the Primary group")
+        check(client, "document.querySelector('#focus-task-title').textContent === " + json.dumps(title) + " && document.querySelector('#focus-status').textContent.includes('Running') && document.querySelectorAll('#primary-tasks article').length === 1 && document.querySelector('#primary-artwork img').src.includes('sb-head-planning-1.svg') && document.querySelector('#extra-artwork img').src.includes('sb-extra-active.svg')", f"{title} has explicit active-focus text outside the Primary group")
         activate(client, "#focus-end")
         wait(client, "document.querySelector('#focus-clock').dataset.state === 'ended'")
     check(client, "[...document.querySelectorAll('#extra-tasks .subtask-of')].some(e => e.textContent === 'Subtask of: Research notes')", "child work keeps its visible parent context")

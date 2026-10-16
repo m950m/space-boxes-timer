@@ -1,7 +1,11 @@
-"""Chrome-only tests for dormant artwork slots; geometry fixtures are not product art.
+"""Chrome-only acceptance checks for the approved Artwork v1 production hosts.
 
-Uses the existing stdlib/CDP helpers and disposable browser storage. Never changes
-the Firefox acceptance runner or supplies assets to the production application.
+Artwork v1 (owner-approved 2026-10-17) is active through js/artwork/registry.js:
+this suite verifies the activation itself — the approved idle composition mounts
+on load, both hosts stay decorative and non-interactive, sizing holds from 320px
+with enlarged text, reduced motion and forced colors keep the static artwork,
+and the documented informative-alternative path still works. Real-state mapping
+coverage lives in run-artwork-state-tests.py.
 """
 
 import functools
@@ -39,26 +43,69 @@ def traversal(client):
 
 
 def suite(client, url):
+    ready = "!!document.querySelector('#editor-fields') && !document.querySelector('#editor-fields').disabled"
     client.call("Page.navigate", url=url)
-    h.wait(client, "!document.querySelector('#editor-fields').disabled")
-    v.check(client, "['primary-artwork','extra-artwork'].every(id => { const e = document.getElementById(id); return e.hidden && e.getAttribute('aria-hidden') === 'true' && !e.childNodes.length; })",
-            "both artwork hosts remain empty, hidden and absent from accessibility")
+    h.wait(client, ready)
+
+    # Approved activation: the idle composition mounts through the production
+    # registry while both hosts remain decorative.
+    v.check(client, """(() => { const host = document.getElementById('primary-artwork');
+      const image = host.querySelector('img');
+      return host.hidden === false && host.getAttribute('aria-hidden') === 'true'
+        && host.querySelectorAll('img').length === 1
+        && image.src.includes('sb-head-idle.svg') && image.alt === ''
+        && image.complete && image.naturalWidth === 480
+        && getComputedStyle(host).pointerEvents === 'none'; })()""",
+            "Artwork v1 idle composition is active, decorative and non-interactive")
     v.check(client, "document.querySelector('#primary-artwork').parentElement.id === 'task-list' && document.querySelector('#primary-artwork').nextElementSibling.nextElementSibling.id === 'primary-tasks' && document.querySelector('#extra-artwork').previousElementSibling.id === 'focus-task-title' && !!document.querySelector('#extra-artwork').closest('#focus-panel')",
             "Primary placement precedes its cards; Extra/subtask placement follows active task text")
-    v.check(client, "!document.querySelector('#task-artwork-image').content.querySelector('img').hasAttribute('src') && !document.querySelectorAll('.task-artwork img').length",
-            "inert template requests no unapproved asset")
-    before = traversal(client)
-    if "task-title" not in before:
-        raise AssertionError("Forward keyboard traversal did not reach task editing")
+    v.check(client, "!document.querySelector('#task-artwork-image').content.querySelector('img').hasAttribute('src')",
+            "template stays inert; assets mount only through the documented clone recipe")
+    v.check(client, "!document.querySelector('#extra-artwork').childNodes.length && document.querySelector('#extra-artwork').hidden",
+            "Extra host stays empty without an active Extra/subtask session")
 
-    # Test sizing/semantics using a plain rectangle, never character/head artwork.
+    order = traversal(client)
+    if "task-title" not in order:
+        raise AssertionError("Forward keyboard traversal did not reach task editing")
+    print("PASS keyboard traversal reaches task editing with artwork active", flush=True)
+
+    # Sizing of the approved assets at four widths and two text sizes. The
+    # Extra badge is mounted through the same documented recipe production uses.
+    client.evaluate("""(() => {
+      const host = document.querySelector('#extra-artwork');
+      const image = document.querySelector('#task-artwork-image').content.firstElementChild.cloneNode(true);
+      image.src = 'assets/artwork/sb-extra-active.svg';
+      image.width = 360; image.height = 236; image.alt = '';
+      host.replaceChildren(image); host.hidden = false;
+    })()""")
+    h.wait(client, "document.querySelector('#extra-artwork img')?.naturalWidth === 360")
+    for width in [320, 375, 768, 1280]:
+        client.call("Emulation.setDeviceMetricsOverride", width=width, height=900, deviceScaleFactor=1, mobile=False)
+        for size in ["100%", "200%"]:
+            client.evaluate("document.documentElement.style.fontSize = " + json.dumps(size))
+            v.check(client, """(() => {
+              if (document.documentElement.scrollWidth > innerWidth) return false;
+              return [...document.querySelectorAll('.task-artwork img')].every(e => {
+                const r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect();
+                return r.width > 0 && r.width <= p.width + 1
+                  && Math.abs(r.width / r.height - e.naturalWidth / e.naturalHeight) < .01;
+              }); })()""",
+                    f"proportional approved artwork, controls in flow, no horizontal overflow at {width}px / {size} text")
+
+    tree = client.call("Accessibility.getFullAXTree")["nodes"]
+    if any(not n.get("ignored") and n.get("role", {}).get("value") == "image" for n in tree):
+        raise AssertionError("Decorative approved artwork leaked into the accessibility tree")
+    print("PASS decorative artwork adds no duplicate accessibility announcement", flush=True)
+
+    # The documented informative-alternative path keeps working when an image
+    # ever carries essential information: host unhidden, meaningful alt exposed.
     client.evaluate("""(() => {
       const host = document.querySelector('#primary-artwork');
       const image = document.querySelector('#task-artwork-image').content.firstElementChild.cloneNode(true);
       image.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900"><rect width="1600" height="900" fill="#182c3d"/></svg>');
       image.width = 1600; image.height = 900;
       image.alt = 'Test fixture: a solid rectangle.';
-      host.append(image); host.hidden = false; host.removeAttribute('aria-hidden');
+      host.replaceChildren(image); host.removeAttribute('aria-hidden');
     })()""")
     h.wait(client, "document.querySelector('#primary-artwork img').naturalWidth === 1600")
     tree = client.call("Accessibility.getFullAXTree")["nodes"]
@@ -66,36 +113,22 @@ def suite(client, url):
                == "Test fixture: a solid rectangle." for n in tree):
         raise AssertionError("Informative image alternative missing from accessibility tree")
     print("PASS informative SVG image exposes its meaningful alternative", flush=True)
-    if traversal(client) != before:
+    if traversal(client) != order:
         raise AssertionError("Artwork changed keyboard order")
     print("PASS mounted image leaves forward/reverse keyboard order unchanged", flush=True)
 
-    for host_id in ["primary-artwork", "extra-artwork"]:
-        client.evaluate("""(() => { const source = document.querySelector('.task-artwork img');
-          const host = document.getElementById(""" + json.dumps(host_id) + """);
-          host.append(source); host.hidden = false; host.setAttribute('aria-hidden', 'true');
-          source.alt = ''; })()""")
-        for width in [320, 375, 768, 1280]:
-            client.call("Emulation.setDeviceMetricsOverride", width=width, height=900, deviceScaleFactor=1, mobile=False)
-            for size in ["100%", "200%"]:
-                client.evaluate("document.documentElement.style.fontSize = " + json.dumps(size))
-                v.check(client, """(() => { const e = document.querySelector('.task-artwork img'), r = e.getBoundingClientRect(), p = e.parentElement.getBoundingClientRect();
-                  return r.width > 0 && r.width <= p.width + 1 && Math.abs(r.width / r.height - 16 / 9) < .01
-                    && document.documentElement.scrollWidth <= innerWidth
-                    && getComputedStyle(e.parentElement).pointerEvents === 'none'; })()""",
-                        f"{host_id}: proportional image, controls in flow, no horizontal overflow at {width}px / {size} text")
-    tree = client.call("Accessibility.getFullAXTree")["nodes"]
-    if any(not n.get("ignored") and n.get("role", {}).get("value") == "image" for n in tree):
-        raise AssertionError("Decorative image leaked into accessibility tree")
-    print("PASS decorative image adds no duplicate accessibility announcement", flush=True)
+    # Fresh load: the approved production artwork under reduced motion and
+    # forced colors, then computed text contrast for the whole page.
+    client.call("Page.navigate", url=url)
+    h.wait(client, ready)
+    h.wait(client, "document.querySelector('#primary-artwork img')?.src.includes('sb-head-idle.svg')")
     for feature, value in [("prefers-reduced-motion", "reduce"), ("forced-colors", "active")]:
         client.call("Emulation.setEmulatedMedia", features=[{"name": feature, "value": value}])
-        v.check(client, """(() => { const e = document.querySelector('.task-artwork img'), s = getComputedStyle(e);
+        v.check(client, """(() => { const e = document.querySelector('#primary-artwork img'), s = getComputedStyle(e);
           return e.complete && e.getBoundingClientRect().width > 0 && s.animationName === 'none' && s.transitionDuration === '0s'
             && document.querySelector('#focus-task-title').getClientRects().length; })()""",
-                feature + " retains the static image and independent task text")
+                feature + " retains the static approved artwork and independent task text")
     client.call("Emulation.setEmulatedMedia", features=[])
-    client.evaluate("document.querySelectorAll('.task-artwork').forEach(e => { e.replaceChildren(); e.hidden = true; e.setAttribute('aria-hidden','true'); }); document.documentElement.style.fontSize = ''")
     v.contrast(client)
     if client.errors:
         raise AssertionError(client.errors)
@@ -117,7 +150,7 @@ def main():
             with h.browser_session(browser, profile) as client:
                 print("Browser:", client.call("Browser.getVersion")["product"], flush=True)
                 suite(client, f"http://127.0.0.1:{server.server_port}/")
-        print(f"PASS {len(v.checks)} artwork boundary checks and 3 accessibility/keyboard assertions", flush=True)
+        print(f"PASS {len(v.checks)} Artwork v1 activation checks and 3 accessibility/keyboard assertions", flush=True)
     finally:
         server.shutdown()
         server.server_close()

@@ -1,5 +1,6 @@
 import { createBrowserFocus } from "./browser-focus.js";
 import { getSessionActivity, validateReconciliation } from "./activity-evidence.js";
+import { renderPlanArtwork } from "../artwork/presentation.js";
 
 const unit = (value, name) => `${value} ${name}${value === 1 ? "" : "s"}`;
 const duration = (ms) => {
@@ -36,6 +37,7 @@ export function mountFocus(store) {
   const $ = (id) => document.getElementById(id);
   let state;
   let plan;
+  let planDay;
   let busy = false;
   let failed = false;
   let polling;
@@ -164,6 +166,10 @@ export function mountFocus(store) {
       ? { focusedMs: getSessionActivity(state, session.id).confirmedActiveMs, at: Date.now() }
       : null;
     updateClock();
+    // Artwork derives here so every existing render path (Start, pause, reload,
+    // observer polling, planner edits via setPlan) updates it in one place.
+    renderPlanArtwork({ plan, day: planDay,
+      focus: state ? { state, contextId: controller.contextId } : null });
     if (!state) return;
     for (const session of state.sessions) {
       let entry = history.get(session.id);
@@ -366,6 +372,7 @@ export function mountFocus(store) {
 
   function setPlan(snapshot, day) {
     plan = snapshot;
+    planDay = day;
     const selection = $("focus-selection");
     const selected = selection.value;
     selection.replaceChildren(new Option("Choose a saved session", ""));
