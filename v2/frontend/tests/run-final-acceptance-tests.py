@@ -259,6 +259,12 @@ def firefox_smoke(client, url, source, folder):
     client.call("browsingContext.navigate", context=client.context, url=url, wait="complete")
     h.wait(client, "!!document.querySelector('#reports-output dl')")
     audit(client, source, folder, "firefox-initial")
+    # Firefox suppresses :focus/:focus-visible styling without OS window focus,
+    # so only traversal is verifiable here; visible focus stays a headed check.
+    client.evaluate("document.querySelector('.skip-link').focus()")
+    h.key(client, "Tab", 9)
+    h.key(client, "Tab", 9, 8)
+    v.check(client, "document.activeElement.matches('.skip-link')", "Firefox: trusted keyboard traversal returns to the skip link")
     for width in [320, 375, 768, 1280]:
         client.call("Emulation.setDeviceMetricsOverride", width=width, height=900)
         v.check(client, "document.documentElement.scrollWidth <= innerWidth", f"Firefox: initial panels reflow at {width}px")
