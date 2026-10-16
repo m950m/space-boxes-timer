@@ -136,8 +136,20 @@ if (location.search === "?peer") {
         } finally { IDBDatabase.prototype.createObjectStore = original; }
         const unchanged = await requestResult(indexedDB.open(DATABASE_NAME, 1));
         assert(unchanged.version === 1 && !unchanged.objectStoreNames.contains("focus"), "Partial migration survived");
-        equal(await requestResult(unchanged.transaction("tasks").objectStore("tasks").get(["local", "work"])), makeTask("local"), "Upgrade lost records");
+        // Wait for the transaction's complete event, not just the request's success:
+        // close() only releases a connection after in-flight transactions finish, and
+        // the adapter's intentionally fatal onblocked handler must not race this
+        // v1->v2 upgrade against our own closing connection (recorded CI failures).
+        const record = await new Promise((resolve, reject) => {
+          const tx = unchanged.transaction("tasks");
+          const request = tx.objectStore("tasks").get(["local", "work"]);
+          tx.oncomplete = () => resolve(request.result);
+          tx.onabort = () => reject(tx.error ?? new DOMException("Readonly transaction aborted.", "AbortError"));
+        });
+        equal(record, makeTask("local"), "Upgrade lost records");
         unchanged.close();
+        // Let the closing connection's teardown be ordered before the upgrade request.
+        await new Promise((resolve) => setTimeout(resolve, 0));
       });
       const store = await open();
       assert(store.localScopeId === "local", "Replaced identity");

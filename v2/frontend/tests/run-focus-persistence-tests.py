@@ -21,6 +21,21 @@ EXPECTED_CHECKS = {
 }
 
 
+def wait_for_profile_release(profile, process, timeout=15):
+    # Same failure mode as run-browser-tests.py: launching the next phase before
+    # the previous browser has released its Singleton* locks can yield a fresh
+    # empty IndexedDB. Only orders the phases; phase assertions decide pass/fail.
+    locks = [pathlib.Path(profile, name) for name in
+             ("SingletonLock", "SingletonSocket", "SingletonCookie")]
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None and not any(lock.exists() for lock in locks):
+            return
+        time.sleep(.05)
+    print(f"NOTE profile locks still present after {timeout}s: "
+          f"{[str(lock) for lock in locks if lock.exists()] or 'process alive'}", flush=True)
+
+
 def discard_profile(profile, attempts=10):
     # Chrome may still hold profile files briefly after exit (observed as
     # "OSError: [Errno 39] Directory not empty" in Python's rmtree). Retry
@@ -69,8 +84,11 @@ def main():
             profile = tempfile.mkdtemp(prefix=f"v2-{name}-")
             try:
                 suite_reports = []
+                previous_process = None
                 for phase in phases:
                     received.clear()
+                    if previous_process is not None:
+                        wait_for_profile_release(profile, previous_process)
                     with tempfile.TemporaryFile(mode="w+") as log:
                         process = subprocess.Popen([
                             browser, "--headless", "--disable-gpu", "--no-first-run", "--disable-popup-blocking",
@@ -88,6 +106,7 @@ def main():
                             except subprocess.TimeoutExpired:
                                 process.kill()
                                 process.wait()
+                    previous_process = process
                     report = reports[-1]
                     suite_reports.append(report)
                     for check in report["checks"]:
