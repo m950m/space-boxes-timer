@@ -27,7 +27,8 @@ export function mountReports(store) {
   const output = $("reports-output");
   const status = $("reports-status");
   const error = $("reports-error");
-  let busy = false;
+  let latestRead = 0;
+  let restoreRefreshFocus = false;
 
   const counted = (report) => {
     const outcomes = [];
@@ -68,40 +69,46 @@ export function mountReports(store) {
   }
 
   async function refresh() {
-    if (busy) return;
+    const read = ++latestRead;
+    const planDay = day.value;
     const refreshButton = $("reports-refresh");
-    const hadFocus = document.activeElement === refreshButton;
-    busy = true;
-    output.setAttribute("aria-busy", "true");
-    refreshButton.disabled = true;
+    restoreRefreshFocus ||= document.activeElement === refreshButton;
+    const settle = () => {
+      output.setAttribute("aria-busy", "false");
+      refreshButton.disabled = false;
+      // Preserve keyboard position unless the user moved elsewhere during reads.
+      if (restoreRefreshFocus && document.activeElement === document.body) refreshButton.focus();
+      restoreRefreshFocus = false;
+    };
     error.textContent = "";
+    output.replaceChildren();
+    if (!day.validity.valid || !planDay) {
+      status.textContent = "Choose a Plan Day above to see its activity.";
+      settle();
+      return;
+    }
+    output.setAttribute("aria-busy", "true");
+    status.textContent = `Loading recorded activity for ${planDay}…`;
+    refreshButton.disabled = true;
     try {
       const state = await store.loadFocus();
-      if (!day.validity.valid || !day.value) {
-        status.textContent = "Choose a Plan Day above to see its activity.";
-        output.replaceChildren();
-      } else {
-        const report = getDayActivityReport(state, day.value);
-        render(report);
-        status.textContent = report.sessionCount
-          ? `Showing confirmed activity for ${day.value}: ${counted(report)}.`
-          : `No recorded focus sessions for ${day.value} yet.`;
-      }
+      if (read !== latestRead) return;
+      const report = getDayActivityReport(state, planDay);
+      render(report);
+      status.textContent = report.sessionCount
+        ? `Showing confirmed activity for ${planDay}: ${counted(report)}.`
+        : `No recorded focus sessions for ${planDay} yet.`;
     } catch (caught) {
+      if (read !== latestRead) return;
       output.replaceChildren();
       status.textContent = "Error — activity could not be read.";
       error.textContent = `${caught.message} Refresh activity to retry.`;
     } finally {
-      busy = false;
-      output.setAttribute("aria-busy", "false");
-      refreshButton.disabled = false;
-      // Disabling the button can move focus to body; preserve keyboard position
-      // unless the user has moved to another control while the read was pending.
-      if (hadFocus && document.activeElement === document.body) refreshButton.focus();
+      if (read === latestRead) settle();
     }
   }
 
-  day.addEventListener("change", () => { if (day.validity.valid) refresh(); });
+  day.addEventListener("change", refresh);
   $("reports-refresh").addEventListener("click", refresh);
   return { refresh };
 }
