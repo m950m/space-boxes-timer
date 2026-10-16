@@ -20,7 +20,10 @@ feed; each written record stores the revision it changed at.
 """
 
 from datetime import datetime, timezone as tz
+from decimal import Decimal
+import math
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.dateparse import parse_date
 
@@ -54,6 +57,15 @@ def _require_ref(value, name):
 def _require_int(value, name, minimum=0):
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise ApiError("validation", f"{name} must be an integer >= {minimum}.", 400)
+    return value
+
+
+def _require_duration_minutes(value, name):
+    """Planning durations follow the approved domain: any positive finite
+    number of minutes (the planner's inputs use step="any")."""
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value <= 0):
+        raise ApiError("validation", f"{name} must be a positive finite number of minutes.", 400)
     return value
 
 
@@ -133,6 +145,12 @@ class SyncService:
                 results.append({"index": index, "status": status, **({"record": payload} if payload else {})})
             except ApiError as exc:
                 results.append({"index": index, "status": "rejected", "code": exc.code, "message": exc.message})
+            except ValidationError as exc:
+                # A structurally invalid identity (e.g. a non-UUID record id)
+                # rejects its own op with the field error; it must never fail
+                # the whole batch with a server error.
+                results.append({"index": index, "status": "rejected", "code": "validation",
+                                "message": "; ".join(exc.messages)})
         self.scope.refresh_from_db()
         return {"results": results, "scopeRevision": self.scope.revision}
 
@@ -197,7 +215,12 @@ class SyncService:
         ):
             return False
         incoming_plan = self._plan_keys(record.get("sessionPlan"))
-        if incoming_plan is None or [(i["id"], i["activeMinutes"]) for i in current["sessionPlan"]] != incoming_plan:
+        server_plan = [
+            (i["id"], None if i["activeMinutes"] is None
+             else Decimal(str(i["activeMinutes"])).normalize())
+            for i in current["sessionPlan"]
+        ]
+        if incoming_plan is None or server_plan != incoming_plan:
             return False
         incoming_retired = self._retired_keys(record.get("retiredFocusItems"))
         if incoming_retired is None or sorted(i["id"] for i in current.get("retiredFocusItems") or []) != incoming_retired:
@@ -207,7 +230,7 @@ class SyncService:
             minutes = row.get("breakMinutes")
             return (
                 row.get("id"),
-                minutes if isinstance(minutes, int) and not isinstance(minutes, bool) else None,
+                self._break_minutes_key(minutes),
                 self._with_none(row.get("afterFocusItemId")),
                 self._with_none(row.get("beforeFocusItemId")),
                 retired,
@@ -237,12 +260,22 @@ class SyncService:
         return server_resources is not None and server_resources == incoming_resources
 
     @staticmethod
+    def _break_minutes_key(value):
+        """Canonical comparison key for a break duration; invalid values never
+        match stored content (they reach the explicit validation path)."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        return Decimal(str(value)).normalize()
+    @staticmethod
     def _plan_keys(rows):
         keyed = []
         for row in rows or []:
             if not isinstance(row, dict) or not row.get("id"):
                 return None
-            keyed.append((row["id"], row.get("activeMinutes")))
+            minutes = row.get("activeMinutes")
+            keyed.append((row["id"],
+                          None if isinstance(minutes, bool) or not isinstance(minutes, (int, float))
+                          or not math.isfinite(minutes) else Decimal(str(minutes)).normalize()))
         return keyed
 
     @staticmethod
@@ -281,7 +314,7 @@ class SyncService:
         seen = set()
         for item in session_plan:
             _require_ref(item.get("id") if isinstance(item, dict) else None, "planned item id")
-            _require_int(item.get("activeMinutes"), "activeMinutes")
+            _require_duration_minutes(item.get("activeMinutes"), "activeMinutes")
             if item["id"] in seen:
                 raise ApiError("validation", "Planned focus item identity must be unambiguous.", 400)
             seen.add(item["id"])
@@ -417,10 +450,14 @@ class SyncService:
             if planned_break.get("beforeFocusItemId") and before is None:
                 raise ApiError("validation", "Planned break must reference plan items of its task.", 400)
             minutes = planned_break.get("breakMinutes")
+            break_minutes = (
+                minutes if not isinstance(minutes, bool) and isinstance(minutes, (int, float))
+                and math.isfinite(minutes) and minutes >= 0 else None
+            )
             PlannedBreak.objects.update_or_create(
                 id=planned_break["id"], task=task,
                 defaults={
-                    "break_minutes": minutes if isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0 else None,
+                    "break_minutes": break_minutes,
                     "after_focus_item": after,
                     "before_focus_item": before,
                     "retired_at": now if retired_break else None,

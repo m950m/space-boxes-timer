@@ -160,7 +160,9 @@ class FocusEngine:
         item = PlannedFocusItem.objects.filter(pk=item_id, task=task, retired_at__isnull=True).first()
         if item is None:
             raise ApiError("validation", "Choose a current planned focus item explicitly.", 400)
-        target_ms = item.active_minutes * 60000
+        # Fractional minute targets round to whole milliseconds; the recorded
+        # snapshot keeps the exact configured minutes.
+        target_ms = int(round(float(item.active_minutes) * 60000))
         if target_ms <= 0:
             raise ApiError("validation", "Active focus target must be positive.", 400)
         timezone_name = require_reference(command.get("timezone"), "timezone")
@@ -172,7 +174,7 @@ class FocusEngine:
             "timezone": timezone_name,
             "plannedStart": task.planned_start,
             "plannedItemId": str(item.pk),
-            "activeMinutes": item.active_minutes,
+            "activeMinutes": float(item.active_minutes),
         }
         if task.parent_task_id:
             snapshot["parentTaskId"] = str(task.parent_task_id)

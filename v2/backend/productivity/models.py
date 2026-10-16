@@ -130,7 +130,9 @@ class PlannedFocusItem(models.Model):
     id = models.UUIDField(primary_key=True, editable=False)
     task = models.ForeignKey(Task, on_delete=models.PROTECT, related_name="focus_items")
     position = models.PositiveIntegerField()
-    active_minutes = models.PositiveIntegerField()
+    # The approved domain accepts any positive finite minute value, so storage
+    # keeps fractional durations instead of losing them in synchronization.
+    active_minutes = models.DecimalField(max_digits=12, decimal_places=4)
     retired_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -149,7 +151,7 @@ class PlannedBreak(models.Model):
 
     id = models.UUIDField(primary_key=True, editable=False)
     task = models.ForeignKey(Task, on_delete=models.PROTECT, related_name="planned_breaks")
-    break_minutes = models.PositiveIntegerField(null=True, blank=True)
+    break_minutes = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     after_focus_item = models.ForeignKey(
         PlannedFocusItem, null=True, blank=True, on_delete=models.PROTECT,
         related_name="breaks_after",
