@@ -209,23 +209,15 @@ def closed_box(checked=False):
     return "\n".join(parts)
 
 
-def open_box(filled, lift_slot=None):
-    """Box with flaps open: three numbered slots; `filled` shows task cubes.
-
-    lift_slot: slot whose cube hovers above the box (focus release); the
-    emptied slot keeps a light outline plus a small release arrow.
-    """
+def open_box(filled):
+    """Box with flaps open: three numbered slots; `filled` shows task cubes."""
     parts = [
         el("rect", {"x": 150, "y": 46, "width": 180, "height": 72, "rx": 10, "fill": OPENING, "stroke": "none"}),
         el("polygon", {"points": "150,50 112,14 146,6 176,44", "fill": KRAFT_DARK, "stroke_width": 8}),
         el("polygon", {"points": "330,50 368,14 334,6 304,44", "fill": KRAFT_DARK, "stroke_width": 8}),
     ]
     for i, cx in enumerate((184, 240, 296), start=1):
-        if lift_slot == i:
-            parts.append(empty_slot(cx, 80, 46, 42))
-            parts.append(el("path", {"d": f"M{cx},62 L{cx},48 M{cx},48 l-6,7 M{cx},48 l6,7",
-                                     "stroke": TAPE, "stroke_width": 6}))
-        elif filled >= i:
+        if filled >= i:
             parts.append(cube(cx, 82, 32, i, num=i))
         else:
             parts.append(empty_slot(cx, 82, 46, 42))
@@ -256,12 +248,28 @@ def planning(filled):
     ]))
 
 
-def focus():
-    parts = [head(), open_box(filled=3, lift_slot=1), rim_front()]
+def focus(k, n):
+    """Active Primary session: task k's cube released, other planned work docked."""
+    parts = [head()]
+    parts.append(el("rect", {"x": 150, "y": 46, "width": 180, "height": 72, "rx": 10, "fill": OPENING, "stroke": "none"}))
+    parts.append(el("polygon", {"points": "150,50 112,14 146,6 176,44", "fill": KRAFT_DARK, "stroke_width": 8}))
+    parts.append(el("polygon", {"points": "330,50 368,14 334,6 304,44", "fill": KRAFT_DARK, "stroke_width": 8}))
+    for i, cx in enumerate((184, 240, 296), start=1):
+        if i == k:
+            parts.append(empty_slot(cx, 82, 46, 42))
+            parts.append(el("path", {"d": f"M{cx},62 L{cx},48 M{cx},48 l-6,7 M{cx},48 l6,7",
+                                     "stroke": TAPE, "stroke_width": 6}))
+        elif i <= n:
+            parts.append(cube(cx, 82, 32, i, num=i))
+        else:
+            parts.append(empty_slot(cx, 82, 46, 42))
+    parts.append(el("rect", {"x": 136, "y": 100, "width": 208, "height": 30, "rx": 10,
+                             "fill": KRAFT, "stroke_width": 8}))
+    parts.append(rim_front())
     # The single space link: one thin orbit ring plus three quiet sparkles.
     parts.append(el("ellipse", {"cx": 240, "cy": 4, "rx": 62, "ry": 20, "stroke": ORBIT,
                                 "stroke_width": 6, "transform": "rotate(-14 240 4)"}))
-    parts.append(cube(240, 4, 40, 1, num=1))
+    parts.append(cube(240, 4, 40, k, num=k))
     parts.append(spark(154, -8, 9, ORBIT))
     parts.append(spark(330, -16, 8, ORBIT))
     parts.append(spark(344, 58, 6, ORBIT))
@@ -269,8 +277,8 @@ def focus():
     return svg(CANVAS, (480, 500), "\n".join(parts))
 
 
-def pause():
-    """Front flap folded halfway over the cubes: work tucked in, not ended."""
+def pause(n):
+    """Paused Primary session: planned work tucked under the half-closed lid."""
     parts = [
         head(),
         el("rect", {"x": 150, "y": 46, "width": 180, "height": 72, "rx": 10, "fill": OPENING, "stroke": "none"}),
@@ -278,7 +286,10 @@ def pause():
         el("polygon", {"points": "330,50 368,14 334,6 304,44", "fill": KRAFT_DARK, "stroke_width": 8}),
     ]
     for i, cx in enumerate((184, 240, 296), start=1):
-        parts.append(cube(cx, 82, 32, i, num=i))
+        if i <= n:
+            parts.append(cube(cx, 82, 32, i, num=i))
+        else:
+            parts.append(empty_slot(cx, 82, 46, 42))
     # half-closed lid over the cubes: the resting cue, in shape not color
     parts.append(el("rect", {"x": 136, "y": 74, "width": 208, "height": 32, "rx": 10,
                              "fill": KRAFT, "stroke_width": 8}))
@@ -324,8 +335,11 @@ FILES = {
     "sb-head-planning-1.svg": planning(1),
     "sb-head-planning-2.svg": planning(2),
     "sb-head-planning-3.svg": planning(3),
-    "sb-head-focus.svg": focus(),
-    "sb-head-pause.svg": pause(),
+    # Active-session variants bind the released cube to the active task's slot
+    # (k) within the day's planned count (n): no stale-position association.
+    **{f"sb-head-focus-{k}-of-{n}.svg": focus(k, n)
+       for n in (1, 2, 3) for k in range(1, n + 1)},
+    **{f"sb-head-pause-{n}.svg": pause(n) for n in (1, 2, 3)},
     "sb-head-complete.svg": complete(),
     "sb-extra-active.svg": extra_active(),
 }

@@ -1,121 +1,136 @@
-# Character artwork preview — owner evaluation package
+# Character artwork — evaluation package and integrated preview
 
-Status: **unapproved proposal for owner visual review; no production change**.
-Branch `feature/v2-character-artwork` (from `origin/v2` at d85353b). This package
-implements no policy: [OD-023/OD-027](_docs/product/owner-decisions.md) and
-[ARTWORK-INTEGRATION.md](ARTWORK-INTEGRATION.md) remain authoritative. The
-production page, its dormant artwork hooks and the existing tests are untouched.
+Status: **direction approved, exact artwork unapproved — evaluation build, no
+production activation**. Branch `feature/v2-character-artwork` (from `origin/v2`
+at d85353b). [OD-023/OD-027](_docs/product/owner-decisions.md) and
+[ARTWORK-INTEGRATION.md](ARTWORK-INTEGRATION.md) remain authoritative: the
+production page, its dormant artwork hooks and the existing tests are unchanged,
+and the artwork stays absent there until exact visual approval.
 
-## What this is
+## What exists on this branch
 
-An original cartoon character system ("a warm gold head whose open crown holds a
-physical kraft box") prototyped in five session states plus the active
-Extra/subtask badge, and a self-contained preview page for inspecting the actual
-states and how they fit the two prepared integration sites.
+1. **The character system** (proposal commit 0175b9e, extended here): one warm
+   gold head whose cut crown rim holds a physical kraft box; original static
+   SVG, generated deterministically by
+   [generate.py](assets/artwork/generate.py). Shared geometry across every
+   state, so asset swaps never shift layout.
+2. **Functional state mapping** (`js/artwork/presentation.js`): derives both
+   prepared hosts from the existing plan and focus projections inside the
+   existing focus-view render — no new controller, timers, persistence or
+   input handling. Dormant in production: assets resolve from
+   `globalThis.SpaceBoxesArtwork`, which only evaluation entries register.
+3. **Evaluation entries**: [artwork-preview.html](artwork-preview.html) (static
+   design gallery) and [artwork-integrated.html](artwork-integrated.html) (the
+   real application with the registry active). Production entry remains
+   `index.html`.
+4. **Tests**: `tests/run-artwork-preview-tests.py` (gallery) and
+   `tests/run-artwork-state-tests.py` (real-state mapping on the production
+   page with the registry injected).
 
-Inspired by, but deliberately distinct from, the owner's reference illustration:
-front-facing rounded head (reads at small sizes better than a profile silhouette),
-box nested inside a cut crown rim, and no galaxy stream — the space connection is
-exactly one orbit ring and three sparkles in FOCUS only, so decoration never
-competes with tasks.
-
-## View the preview
+## View the integrated experience
 
 ```bash
 cd v2/frontend && python3 -m http.server 8000
-# open http://127.0.0.1:8000/artwork-preview.html
+# Design gallery:    http://127.0.0.1:8000/artwork-preview.html
+# Live application:  http://127.0.0.1:8000/artwork-integrated.html
+# Production page:   http://127.0.0.1:8000/index.html  (artwork dormant)
 ```
 
-The page shows: the five states, the zero-to-three Primary compositions, a
-keyboard-operable state switcher driving a replica of `#primary-artwork` /
-`#extra-artwork` using the documented mounting recipe, palette notes, and the
-open owner decisions.
+In the integrated entry, plan Primary/Extra tasks with real forms and start,
+pause, end and complete sessions; the artwork follows the real state. Real-state
+screenshots captured from this build are available in the delivery report and
+reproducible with `tests/run-artwork-state-tests.py`.
 
-## Asset inventory (original static SVG)
+## State mapping (implemented, evaluation-gated)
 
-All files generated deterministically by [generate.py](assets/artwork/generate.py)
-(committed; rerun with `python3 generate.py`). Intrinsic dimensions are declared
-on each SVG root. No animation, scripts, external references or raster content.
+Derived in `focus-view.js render()` from `snapshot`, `viewDay`,
+`state.reservation` and `startingSnapshot`; recomputed on every existing render
+path (Start, pause/resume/end, planner edits via `setPlan`, reload/observer
+polling, day switch). A change-key guard prevents redundant DOM writes.
 
-| File | Size | States | SHA256 |
-| --- | --- | --- | --- |
-| `assets/artwork/sb-head-idle.svg` | 480×500 | IDLE | `aac1c6be…c7335b` |
-| `assets/artwork/sb-head-planning-0.svg` | 480×500 | PLANNING, 0 planned | `2677f38a…c5be2dc` |
-| `assets/artwork/sb-head-planning-1.svg` | 480×500 | PLANNING, 1 planned | `9f525dd6…59bd0b43` |
-| `assets/artwork/sb-head-planning-2.svg` | 480×500 | PLANNING, 2 planned | `4de1e9cd…f68599` |
-| `assets/artwork/sb-head-planning-3.svg` | 480×500 | PLANNING, 3 planned | `4a4b5e87…2748ff` |
-| `assets/artwork/sb-head-focus.svg` | 480×500 | FOCUS | `afb1f9f0…2a7b` |
-| `assets/artwork/sb-head-pause.svg` | 480×500 | PAUSE | `b0736812…cd1d83` |
-| `assets/artwork/sb-head-complete.svg` | 480×500 | COMPLETE | `7dc9368f…93a7eab` |
-| `assets/artwork/sb-extra-active.svg` | 360×236 | active Extra/subtask badge | `f414dc45…76061` |
-
-Provenance: original creation for this repository, authored as vector geometry in
-the committed generator script; no stock assets, no third-party or AI-generated
-source imagery. License follows the repository license at integration time.
-
-## Character states and their non-color cues
-
-State never relies on color alone (OD-023); every state carries a shape cue:
-
-| State | Composition | Shape cues |
+| Condition | `#primary-artwork` | `#extra-artwork` |
 | --- | --- | --- |
-| IDLE | Box taped shut in the crown; calm face | closed box, neutral brows |
-| PLANNING | Flaps open; three numbered slots; occupied slots show task-colored numbered cubes, free slots stay outlined | open flaps, cube numerals 1–3, dashed free slots |
-| FOCUS | One cube released above the box with a single thin orbit ring and three sparkles; other planned work stays docked; focused half-lidded face | lifted cube, released-slot arrow, one raised brow |
-| PAUSE | Front lid folds halfway over the docked work; resting face | half-closed lid, closed eyes, hand-drawn pause bars |
-| COMPLETE | Box taped shut with a check; one star and two dots; cheerful face | check on tape, single star |
+| No Primary tasks for the shown day | idle (closed box) | — |
+| 1–3 Primary planned, none active | planning-N (N numbered cubes) | — |
+| Owned running reservation on shown-day Primary task k | focus-k-of-n (that task's cube released) | — |
+| Owned paused reservation on Primary task | pause-n (work tucked, resting) | — |
+| Reservation controlled elsewhere | planning-N (implies no local control) | — |
+| Session ended (completed or early) | planning-N — **sessions never complete tasks** | badge cleared |
+| All shown-day Primary tasks carry the explicit completion decision | complete | — |
+| Owned active Extra/subtask session | (day state as above) | active badge — never a fourth box |
 
-Slot numerals tie compositions to the existing ordered Primary cards (the same
-displayed IDs/order per the session-to-image contract in ARTWORK-INTEGRATION.md);
-the count of visible cubes follows the approved zero-to-three rule and no fourth
-box ever appears. `sb-extra-active` is a targeted cube in a dashed reticle — a
-clearly non-head representation for the Extra/subtask focus surface.
+Association rules: the released cube binds by saved task ID to the task's card
+order slot; tasks missing from the current plan fall back to the day
+composition; different Plan Days show their own composition; failed reads and
+stale associations hide rather than guess. State is never persisted and never
+relies on color alone (shape cues per state are listed in the gallery).
 
-## Prepared mapping (not implemented)
+## Asset inventory (original static SVG, all 480×500 except the 360×236 badge)
 
-Candidate mapping only, per the contract table in ARTWORK-INTEGRATION.md:
-planning compositions map to `app.js` `renderTasks()`/`snapshot` Primary IDs;
-the opening treatment maps only to the explicit successful Start transition in
-`focus-view.js`; clock `data-state` phases (`running`, `paused`) would select
-FOCUS/PAUSE only after exact approval. Deriving logic belongs to a future
-integration task after owner approval; nothing here persists image state or
-touches domain/persistence code.
+| File | SHA256 (first 16) |
+| --- | --- |
+| `sb-head-idle.svg` | `aac1c6be11f36470` |
+| `sb-head-planning-0.svg` | `2677f38a720042a0` |
+| `sb-head-planning-1.svg` | `9f525dd6336f551d` |
+| `sb-head-planning-2.svg` | `4de1e9cd490f406b` |
+| `sb-head-planning-3.svg` | `4a4b5e87de2c442b` |
+| `sb-head-focus-1-of-1.svg` | `5e03c96e9c6044b1` |
+| `sb-head-focus-1-of-2.svg` | `a3ff1de5ca8617fc` |
+| `sb-head-focus-1-of-3.svg` | `1f22a06b12c6e9d2` |
+| `sb-head-focus-2-of-2.svg` | `5d3dd363829e15c0` |
+| `sb-head-focus-2-of-3.svg` | `e4d27f67cfb34a34` |
+| `sb-head-focus-3-of-3.svg` | `1fadaf3ed0eb04a2` |
+| `sb-head-pause-1.svg` | `d308af3d3037dd65` |
+| `sb-head-pause-2.svg` | `982b8793227c5117` |
+| `sb-head-pause-3.svg` | `b07368124b011117` |
+| `sb-head-complete.svg` | `7dc9368f967bc68d` |
+| `sb-extra-active.svg` | `f414dc454b2758b6` |
 
-## Requirements coverage in this preview
-
-- Responsive: hosts keep the `task-artwork` boundary (max-inline-size 32rem,
-  in-flow scaling); verified no horizontal overflow at 320/375/768/1280px with
-  100%/200% root text.
-- Reduced motion: static SVG only; no CSS transitions or animations anywhere in
-  the preview; verified under `prefers-reduced-motion: reduce`.
-- Keyboard: native radio/select/checkbox controls with visible focus from the
-  planner stylesheet; verified via trusted key events (Tab traversal, arrow-key
-  state switch).
-- Non-color cues: shape cues per state (table above); decorative hosts remain
-  `aria-hidden` with `alt=""` and `pointer-events: none`, so controls keep
-  pointer and keyboard access; full-page computed text contrast meets AA.
+Full SHA256 values are reproducible via `sha256sum assets/artwork/*.svg` and
+regeneration via `python3 assets/artwork/generate.py`. Provenance: original
+creation for this repository as committed vector geometry; no stock or
+third-party source imagery; license follows the repository license at
+integration time.
 
 ## Tests executed (this branch, this working tree)
 
 ```bash
-python3 v2/frontend/tests/run-artwork-preview-tests.py   # PASS 20 checks (new)
-python3 v2/frontend/tests/run-artwork-integration-tests.py  # PASS 54 checks + 3 a11y/keyboard (production hooks still dormant)
-python3 v2/frontend/tests/run-planner-tests.py           # PASS 65 checks
-python3 v2/frontend/tests/run-focus-ui-tests.py          # PASS 92 checks
-python3 v2/frontend/tests/run-visual-tests.py            # PASS 65 checks
-python3 v2/frontend/tests/run-final-acceptance-tests.py --browser chrome  # PASS 54 checks
+python3 v2/frontend/tests/run-artwork-state-tests.py       # PASS 21 (new: real-state mapping)
+python3 v2/frontend/tests/run-artwork-integration-tests.py # PASS 54 + 3 a11y/keyboard (production still dormant)
+python3 v2/frontend/tests/run-artwork-preview-tests.py     # PASS 20
+python3 v2/frontend/tests/run-planner-tests.py             # PASS 65
+python3 v2/frontend/tests/run-focus-ui-tests.py            # PASS 92
+python3 v2/frontend/tests/run-visual-tests.py              # PASS 65
+python3 v2/frontend/tests/run-final-acceptance-tests.py --browser chrome  # PASS 54
+python3 v2/frontend/tests/run-focus-domain-tests.py        # PASS 127
+python3 v2/frontend/tests/run-focus-persistence-tests.py   # PASS 48
+python3 v2/frontend/tests/run-connected-sync-tests.py      # PASS 16
 ```
 
+Coverage in the new suite: idle/planning-2 on real saves; Extra badge without a
+fourth box; badge retained while paused; early end clearing the badge without
+completion; running Primary focus releasing the active task's own cube (2-of-2);
+pause tuck; a fully observed session returning the day to planning; one
+completed task keeping planning; all-completed showing the reaction; day switch
+to idle; accessibility-tree exclusion, reduced motion, forced colors, 320–1280px
+at 200% text, keyboard traversal, and an element-structure drift guard between
+the evaluation copy and `index.html`.
+
 Unexecuted/unavailable: the axe audit (needs the locally supplied axe-core
-bundle; runner never downloads it) and the Firefox acceptance runner (documented
-as failing in this environment; requires a display). No production behavior was
-changed, so no additional regression surface exists.
+bundle) and the Firefox acceptance runner (documented environment failure;
+requires a display). `app.js` is untouched; `focus-view.js` gains only the
+import, a stored plan day, and the single derivation call.
 
-## Decisions needed from the owner
+## Decisions needed from the owner (consolidated)
 
-1. Approve or reject this character direction (metaphor, palette, expression style).
-2. Approve per-state treatments or request changes (e.g., FOCUS ring density, PAUSE bars, COMPLETE restraint).
-3. Confirm slot numerals 1–3 tied to card order as the task association.
-4. Decide on the Extra/subtask badge concept (targeted cube) or request an alternative.
-5. Decide whether COMPLETE artwork follows completed sessions only or any ended session.
-6. After approval: choose integration scope (planner host only vs. both hosts) and authorize the follow-up integration task, including the test update ARTWORK-INTEGRATION.md reserves for that moment.
+1. Approve the exact character illustrations for integration (the files above,
+   as rendered in the integrated entry and screenshots).
+2. Approve the implemented state mapping, specifically: COMPLETE appears only
+   when every shown-day Primary task carries the explicit completion decision;
+   sessions (even fully observed ones) return the day to planning.
+3. Confirm slot numerals 1–3 bound to card order as the task association.
+4. Approve the Extra/subtask badge as the active-focus representation.
+5. Choose the activation scope after approval: production `index.html` +
+   registry registration (planner host only, or both hosts), and authorize the
+   corresponding integration task, the asset-provenance record and the
+   reserved test update in ARTWORK-INTEGRATION.md.
