@@ -43,6 +43,18 @@ class Firefox(h.CDP):
         return json.loads(value) if value is not None else None
 
     def call(self, method, **params):
+        if method == "Input.dispatchKeyEvent":
+            value = {"Tab": "\ue004", "Enter": "\ue007"}[params["key"]]
+            shift = params.get("modifiers", 0) & 8
+            down = params["type"] == "keyDown"
+            actions = ([{"type": "keyDown", "value": "\ue008"}] if shift and down else [])
+            actions.append({"type": "keyDown" if down else "keyUp", "value": value})
+            if shift and not down:
+                actions.append({"type": "keyUp", "value": "\ue008"})
+            return super().call("input.performActions", context=self.context,
+                                actions=[{"type": "key", "id": "acceptance-keyboard", "actions": actions}])
+        if method == "Page.navigate":
+            return super().call("browsingContext.navigate", context=self.context, url=params["url"], wait="complete")
         if method == "Emulation.setDeviceMetricsOverride":
             return super().call("browsingContext.setViewport", context=self.context,
                                 viewport={"width": params["width"], "height": params["height"]})
@@ -52,12 +64,12 @@ class Firefox(h.CDP):
 
 
 @contextlib.contextmanager
-def firefox_session(browser, profile_parent):
+def firefox_session(browser, profile_parent, headed=False):
     with tempfile.TemporaryDirectory(prefix="v2-final-firefox-", dir=profile_parent) as profile, tempfile.TemporaryFile(mode="w+") as log:
         with socket.socket() as port_socket:
             port_socket.bind(("127.0.0.1", 0))
             port = port_socket.getsockname()[1]
-        process = subprocess.Popen([browser, "--headless", "--no-remote", "--profile", profile,
+        process = subprocess.Popen([browser, *([] if headed else ["--headless"]), "--no-remote", "--profile", profile,
                                     "--remote-debugging-port", str(port)], stdout=log, stderr=log)
         client = None
         session_created = False
@@ -129,7 +141,16 @@ def select_first(client):
 
 
 def activate(client, selector):
-    v.activate(client, selector)
+    if isinstance(client, Firefox):
+        # The diagnostic uses forward/back traversal to avoid starting with
+        # backwards traversal across the first-link boundary.
+        client.evaluate(f"document.querySelector({json.dumps(selector)}).focus()")
+        h.key(client, "Tab", 9)
+        h.key(client, "Tab", 9, 8)
+        v.check(client, f"document.activeElement.matches({json.dumps(selector)}) && document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle === 'solid'", f"Firefox visible keyboard focus: {selector}")
+        h.key(client, "Enter", 13)
+    else:
+        v.activate(client, selector)
     h.wait(client, "document.querySelector('#focus-panel').getAttribute('aria-busy') === 'false' && !document.querySelector('#editor-fields').disabled && document.querySelector('#reports-output').getAttribute('aria-busy') !== 'true'")
 
 
@@ -192,9 +213,8 @@ def surface_suite(client, url, source, folder, engine):
     h.fill(client, f"{form} input[id^=seconds-]", "1")
     activate(client, f"{form} button[type=submit]")
     h.wait(client, "!!document.querySelector('#focus-error').textContent && document.querySelector('#focus-panel').getAttribute('aria-busy') === 'false'")
-    v.check(client, "document.activeElement.id === 'focus-heading' && !!document.querySelector('#focus-error').textContent", f"{engine}: failed reconciliation keeps Focus keyboard context and exposes its alert")
+    v.check(client, "document.activeElement.matches('input[id^=seconds-]') && !document.querySelector('#focus-status').textContent.startsWith('Error') && !document.querySelector('#focus-resume').disabled", f"{engine}: invalid reconciliation focuses its field and leaves the controller usable")
     audit(client, source, folder, f"{engine}-reconciliation-error")
-    activate(client, "#focus-refresh")
     h.fill(client, f"{form} input[id^=seconds-]", "2")
     activate(client, f"{form} button[type=submit]")
     h.wait(client, "!document.querySelector('#focus-reconciliation form')")
@@ -308,6 +328,8 @@ def main():
     parser.add_argument("--browser", choices=["both", "chrome", "firefox"], default="both")
     parser.add_argument("--firefox-profile-parent", type=pathlib.Path,
                         help="Disposable profile parent accessible to Firefox; Snap needs ~/snap/firefox/common")
+    parser.add_argument("--firefox-headed", action="store_true",
+                        help="Use a real Firefox window for keyboard/focus acceptance (requires a display)")
     args = parser.parse_args()
     source = None
     if args.axe_source:
@@ -334,14 +356,21 @@ def main():
                 with h.browser_session(browser, profile) as client:
                     print(f"Browser: {client.call('Browser.getVersion')['product']}", flush=True)
                     surface_suite(client, url, source, args.artifacts, "chrome")
+                    v.reports_race(client, "chrome")
                     startup_failure(client, source, args.artifacts, "chrome")
                     if client.errors:
                         raise AssertionError(client.errors)
             zoom_suite(browser, url, source, args.artifacts)
         firefox = shutil.which("firefox")
         if firefox and args.browser != "chrome":
-            with firefox_session(firefox, args.firefox_profile_parent) as client:
-                firefox_smoke(client, url, source, args.artifacts)
+            with firefox_session(firefox, args.firefox_profile_parent, args.firefox_headed) as client:
+                if args.firefox_headed:
+                    surface_suite(client, url, source, args.artifacts, "firefox")
+                    v.reports_race(client, "firefox")
+                else:
+                    firefox_smoke(client, url, source, args.artifacts)
+                if args.firefox_headed:
+                    startup_failure(client, source, args.artifacts, "firefox")
         elif args.browser != "chrome":
             print("SKIP Firefox: browser not installed", flush=True)
         print(f"PASS {len(v.checks)} independent presentation checks; inspect axe incomplete results separately", flush=True)
