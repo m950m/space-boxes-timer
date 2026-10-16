@@ -697,7 +697,8 @@ planningStore.then(async (opened) => {
       ? connectedFocusStore.commitFocus(intent) : localFocusStore.commitFocus(intent)),
   };
   const reloadFocusViews = () => { focusView?.load(); reportsView?.refresh(); };
-  accountPanel = mountAccountPanel({ planningStore, onConnectedChange: reloadFocusViews });
+  accountPanel = mountAccountPanel({ planningStore, onConnectedChange: reloadFocusViews,
+    onTasksMerged: loadPlans });
   await loadPlans();
   // Independent status reporting keeps focus checkpoints from overwriting planner feedback.
   focusView = mountFocus(focusStore);

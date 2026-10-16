@@ -8,7 +8,8 @@ import { Connection } from "./connected/connection.js";
 
 const $ = (id) => document.getElementById(id);
 
-export function mountAccountPanel({ planningStore, onConnectedChange = () => {} } = {}) {
+export function mountAccountPanel({ planningStore, onConnectedChange = () => {},
+  onTasksMerged = () => {} } = {}) {
   const elements = {
     panel: $("account-panel"),
     signedOut: $("account-signed-out"),
@@ -127,11 +128,13 @@ export function mountAccountPanel({ planningStore, onConnectedChange = () => {} 
   elements.sync.addEventListener("click", async () => {
     elements.formError.textContent = "";
     try {
-      await connection.syncNow({
+      const result = await connection.syncNow({
         store: await storePromise,
         snapshot: latestSnapshot, focusState: await currentFocus(),
       });
       render();
+      // Downloaded tasks only reach the planner through a plan reload.
+      if (result?.merge) onTasksMerged();
     } catch (error) { fail(error); }
   });
 

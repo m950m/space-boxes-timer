@@ -11,12 +11,14 @@
   const realFetch = window.fetch.bind(window);
   let respond = async () => ({ status: 500, payload: { error: { code: "stub", message: "no behavior" } } });
   const pushes = [];
+  const pullQueries = [];
   window.fetch = async (input, init = {}) => {
     const path = typeof input === "string" ? input : input.url;
     const method = (init.method ?? "GET").toUpperCase();
     if (!path.startsWith("/api/")) return realFetch(input, init);
     const body = init.body ? JSON.parse(init.body) : undefined;
     if (method === "POST" && path === "/api/v2/sync/push") pushes.push(body.ops);
+    if (path.startsWith("/api/v2/sync/pull")) pullQueries.push(path);
     // Scenario handlers match the route without query strings.
     const outcome = await respond(method, path.split("?")[0], body);
     if (outcome.networkError) throw new TypeError("Failed to fetch");
@@ -99,6 +101,27 @@
     assert("connect flattens plannedStart to the wire string",
       connectOps[0]?.record.plannedStart === "09:30", connectOps[0]?.record.plannedStart);
     assert("connect reports connected status", lastStatus().startsWith("connected"), lastStatus());
+
+    // Cross-device download: records another device uploaded before this
+    // device connected must arrive on the next synchronization (integration
+    // finding 2026-10-15 — the connect cursor previously skipped them).
+    const foreignTask = { id: crypto.randomUUID(), planDayId: DAY,
+      title: "Downloaded from account", plannedStart: "10:00", classification: "extra",
+      sessionPlan: [{ id: crypto.randomUUID(), activeMinutes: 15 }],
+      recordRevision: 1, originScopeKey: "local:other-device" };
+    respond = async (method, path) => {
+      if (path === "/api/v2/csrf") return { payload: { csrfToken: "stub-token" } };
+      if (path.startsWith("/api/v2/sync/pull")) return { payload: { ...pullFeed(3), tasks: [foreignTask] } };
+      return { status: 404, payload: { error: { code: "stub", message: path } } };
+    };
+    await connection.syncNow({ store, snapshot, focusState: focusState() });
+    assert("the first synchronization after connect pulls the whole account feed",
+      pullQueries.at(-1)?.endsWith("since=0"), pullQueries.at(-1));
+    const afterPull = await store.load(store.localScopeId);
+    assert("records connected before this device download into the planner",
+      afterPull.tasks.some((task) => task.id === foreignTask.id),
+      afterPull.tasks.map((task) => task.id).join(","));
+
     sessionStorage.setItem("connected-sync-phase", "2");
     sessionStorage.setItem("connected-sync-task", task.id);
     sessionStorage.setItem("connected-sync-checks", JSON.stringify(checks));
