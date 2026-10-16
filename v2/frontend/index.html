@@ -64,6 +64,8 @@
         <p id="focus-status" role="status" aria-live="polite" aria-atomic="true">Loading saved focus…</p>
         <p id="focus-error" role="alert" aria-atomic="true"></p>
         <h3 id="focus-task-title">Ready when you are</h3>
+        <!-- Owner-approved Extra/subtask art belongs outside the Primary composition. -->
+        <div id="extra-artwork" class="task-artwork" hidden aria-hidden="true"></div>
         <div id="focus-clock" role="timer" aria-live="off" aria-atomic="true" data-state="loading">
           <p class="clock-label">Active focus remaining</p>
           <p id="focus-clock-remaining">--:--</p>
@@ -171,7 +173,7 @@
           <p id="day-summary" role="status" aria-live="polite"></p>
           <div id="task-list" aria-busy="true">
             <!-- Reserved for owner-approved original artwork; no substitute is displayed. -->
-            <div id="primary-artwork" hidden aria-hidden="true"></div>
+            <div id="primary-artwork" class="task-artwork" hidden aria-hidden="true"></div>
             <h3>Primary <span class="heading-note">Up to three</span></h3><div id="primary-tasks"></div>
             <h3>Extra <span class="heading-note">Room for more</span></h3><div id="extra-tasks"></div>
           </div>
@@ -187,5 +189,10 @@
         <p class="help">Factual summary of recorded focus sessions for the Plan Day shown above. Sessions count toward the Plan Day they were planned under, even when work crosses midnight. Pause, interruptions and unresolved time are shown separately; wall-clock time is never reported as focus.</p>
       </section>
     </main>
+    <!-- Inert until exact asset approval; set src, intrinsic width/height and alt before mounting.
+         Use a static SVG/image; keep equivalent task/state text outside the artwork. -->
+    <template id="task-artwork-image">
+      <img alt="" decoding="async">
+    </template>
   </body>
 </html>

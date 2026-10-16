@@ -116,6 +116,9 @@ summary { width: fit-content; max-width: 100%; min-height: 2.75rem; padding: .5r
 .resource-links a { display: inline-block; padding-block: .5rem; }
 .resource-links span { color: var(--muted); }
 .primary-card { border-left: 4px solid var(--blue); }
+/* Dormant artwork hosts: approved static assets stay in flow, separate from controls. */
+.task-artwork { max-inline-size: 32rem; margin-inline: auto; pointer-events: none; }
+.task-artwork img { display: block; max-inline-size: 100%; block-size: auto; margin-inline: auto; }
 .task-kind { width: fit-content; max-width: 100%; margin: 0; padding: .15rem .5rem; border-radius: .3rem; background: var(--soft); color: var(--blue); font-size: .8rem; font-weight: 750; }
 .heading-note { display: inline-block; margin-left: .35rem; color: var(--muted); font-size: .85rem; font-weight: 500; }
 #day-summary { padding: .75rem; border-radius: .5rem; background: var(--soft); font-weight: 650; }

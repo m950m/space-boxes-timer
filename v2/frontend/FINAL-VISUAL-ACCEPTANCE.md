@@ -1,5 +1,109 @@
 # Final visual acceptance and release verification
 
+## Current delivery — 2026-10-16
+
+**Prepared integration boundary and Chrome regression complete; full Visual
+Acceptance remains OPEN.** This section supersedes the engineering status below.
+The historical results are retained with their original revision/limitations.
+
+- Base: freshly fetched `origin/v2`, verified GitHub integration
+  `b636fba7bd4679d43c6ade8c78e0fc0afd3b17c2` (merged PR #58).
+- Branch: `feature/v2-final-visual-delivery`; checkout:
+  `/home/mnabil/Learning/projects/Space_boxes_Codex_VisualAcceptance`, initially
+  clean. Existing branches/worktrees were preserved. The delivery commit/PR is
+  the containing revision; runtime checks below exercised its final HTML/CSS and
+  new Chrome test, before documentation-only completion.
+- [Ownership coordination for Zcode](https://github.com/m950m/space-boxes-timer/issues/11#issuecomment-6214424608)
+  records the bounded writing window. Zcode's Firefox worktree and all existing
+  acceptance runners remain untouched. No open PR overlapped this scope at
+  preflight; previous Visual writes were released and PRs #57/#58 integrated.
+- Changed files: `index.html`, `css/planner.css`,
+  `tests/run-artwork-integration-tests.py`, this report and
+  `ARTWORK-INTEGRATION.md`. No state, authority, data, account, sync or backend
+  code changed. Publication is scoped to this branch/PR under the current owner
+  mission; merge and production release remain human-controlled.
+
+The Primary host stays in its existing place before Primary cards. A second
+empty host follows the active task title in Focus for approved Extra/subtask
+art. Both remain hidden and excluded from accessibility. The inert image
+template requests no asset; responsive styles preserve intrinsic proportions,
+normal flow and control access. There is no displayed placeholder, character,
+animation or new user action. Completed screens retain their layout. The
+[integration brief](ARTWORK-INTEGRATION.md) records exact placement, asset
+provenance, semantic/static requirements and future session-to-image mapping.
+The original head/box experience is still unimplemented pending exact approval.
+
+### Current executed evidence
+
+Linux, Python 3.14, **Chrome 155.0.8059.84**; disposable profiles/origins only.
+
+| Check | Result on final presentation files |
+| --- | --- |
+| New Chrome artwork integration runner | **54 boundary checks + 3 image/accessibility/keyboard assertions passed.** Empty/hidden hosts, correct placement, no asset request, informative SVG alternative in the accessibility tree, decorative-image exclusion, unchanged 16-stop forward/visible-focus and reverse keyboard traversal; proportional geometry fixture in both hosts at 320/375/768/1280px with 100/200% text, reduced motion and forced colors. Fixtures are temporary rectangles, not product art. |
+| Existing Chrome visual runner | **65 passed**: production Planner/Focus/Activity actions, keyboard, long content, responsive text/controls, computed contrast, reduced motion, forced colors and Reports request races. |
+| Existing final acceptance runner, `--browser chrome` | **54 passed**, including recovery/reconciliation/errors, keyboard, live-status DOM behavior and actual 100/200/400% layout zoom. Fixed 1280px outer window gave 1280/640/320px inner widths, DPR 1/2/4, scale 1, no horizontal overflow. |
+| Pinned axe 4.10.3 | **12 state audits, zero violations**. Eleven retain the note-field contrast incomplete; no rule disabled or finding suppressed. Bundle SHA256 is the pinned value below. |
+| Screenshot review | Narrow reconciliation and 400% Focus reviewed: text wraps, controls remain in flow, visible focus remains discernible. Long content requires vertical scrolling. Production screenshots and zoom metrics were captured. |
+| Static/diff checks | New Python runner compiles; `git diff --check` passes. Deliberate scope review confirms only the five files above; existing Firefox/shared runners are unchanged. |
+
+Previously passing broad domain/persistence/backend suites were not repeated
+locally for dormant markup/styles. The PR's configured CI gates must pass at its
+published head; their remote results belong in the final PR/handoff. The new
+Chrome-only runner is a separate local verification command, not a new CI job.
+No current Firefox, human AT or physical-device pass is claimed.
+
+### Contrast finding disposition
+
+Reproduced axe's `#task-note` incomplete with both empty and populated text:
+`elmPartiallyObscured` / background could not be determined. Rendered computed
+foreground is `#182c3d` on opaque `#ffffff`, opacity 1: **14.32:1**, above the
+4.5:1 normal-text threshold. Browser hit-tests at 10/50/90% of the field's
+interior centerline returned the textarea as the topmost element. Existing
+visible-text checks passed across interaction states. No actual contrast failure
+was confirmed in this scope; no speculative color/layout change was made.
+These sampled checks do not resolve every possible overlap. Keep the incomplete
+for human visual/AT review; zero automated violations is not conformance.
+
+### Owner-facing final acceptance checklist
+
+| Acceptance item | Current disposition / required evidence |
+| --- | --- |
+| Integration architecture, hooks, static responsiveness and semantics | Prepared and Chrome-tested; review containing diff and the integration brief. No actual art installed. |
+| Exact original artwork | **OWNER APPROVAL REQUIRED:** original head style, zero/one/two/three Primary compositions and empty slots; closed/open Primary and explicit Start release; active Extra/subtask outside the boxes; exact responsive/static/reduced-motion versions and any essential alternatives. Additional session-state art remains undecided. Record filename/hash, provenance/license, versions/screens and decision link together. |
+| Artwork-dependent AC-010 | **BLOCKED ON ASSETS:** integrate only the approved versions, then verify actual Primary opening and Extra/child focus with existing identity/status/control semantics. Repeat affected visual, zoom, contrast and keyboard checks. Template tests do not satisfy AC-010. |
+| Firefox keyboard | **ZCODE / OPEN:** reproduce and resolve strict skip-link/focus failure in its assigned worktree; record normal-window keyboard evidence on the integrated candidate. Smoke tests or Chrome success do not waive this. |
+| Actual assistive technology | **HUMAN EVIDENCE REQUIRED:** labels/errors/busy state, Start/Pause/End, timer silence, automatic completion, observer/recovery, failed/corrected reconciliation, report retry and note-field contrast review. Record OS/browser/AT versions, candidate SHA and actual spoken outcomes. |
+| Physical touch devices | **HUMAN EVIDENCE REQUIRED:** real hardware/OS/browser, portrait/landscape, native inputs, software keyboard, long content, targets and recovery/reconciliation; record candidate SHA. Viewport emulation is insufficient. |
+| Final visual and release decision | Review actual approved assets plus zoom/spacing/forced-colors/static behavior. Record outstanding results on #11, confirm final-head CI, then use separate human merge/release authorization. No WCAG certification or production readiness is granted here. |
+
+Current commands (no Firefox invocation):
+
+```bash
+python3 v2/frontend/tests/run-artwork-integration-tests.py
+python3 v2/frontend/tests/run-visual-tests.py \
+  --screenshots /tmp/space-boxes-final-visual-delivery/screenshots
+python3 v2/frontend/tests/run-final-acceptance-tests.py --browser chrome \
+  --axe-source /tmp/axe-4.10.3.js \
+  --artifacts /tmp/space-boxes-final-visual-delivery/final
+```
+
+Local-only evidence: `/tmp/space-boxes-final-visual-delivery/` contains baseline
+and final logs, `contrast-probe.log`, `evidence-summary.json`, screenshots/axe/zoom
+JSON, and a SHA256 artifact manifest. These are not remotely published release
+artifacts; repeatable commands and factual results are durable here. The supplied
+axe bundle is hash-checked by the runner and never downloaded by it.
+
+### Ownership release and next action
+
+No further writes are planned after publication of this scoped delivery. Return
+assignment control to the owner; account for the containing PR's unmerged files
+before another writer edits them. Zcode continues Firefox independently. Owner
+reviews the integration preparation, approves the exact artwork package and
+assigns human AT/device acceptance. Those gates prevent full visual release;
+there is no remaining confirmed independent presentation defect from these checks.
+
+## Historical engineering checkpoint — 2026-10-15
+
 Checkpoint: **2026-10-15, engineering repairs complete; full Visual Acceptance
 remains OPEN.** This supersedes the PR #56 acceptance checkpoint for current
 status. Its [historical evidence](https://github.com/m950m/space-boxes-timer/blob/ead59ab5bd3a98c8edf40d4501585c0aef45cbdd/v2/frontend/FINAL-VISUAL-ACCEPTANCE.md)
