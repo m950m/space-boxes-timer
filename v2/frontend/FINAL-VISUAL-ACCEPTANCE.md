@@ -217,6 +217,52 @@ strict assertion and currently fails here; default Firefox smoke passing does
 not supersede it. Normal-window keyboard reproduction is still needed before
 Firefox keyboard compatibility can be accepted.
 
+### 2026-10-16 update — classified UNVERIFIED — ENVIRONMENT-BLOCKED
+
+One further bounded investigation established the mechanism and the
+classification; no application code changed.
+
+- The strict assertion still fails in a headed Firefox 157 window with
+  `document.activeElement` already on `.skip-link`; only the
+  `:focus-visible`/solid-outline part cannot pass. Firefox suppresses
+  `:focus` and `:focus-visible` styling whenever `document.hasFocus()` is
+  false, and this machine never grants OS window focus to a window started by
+  a non-interactive test process.
+- Application focus behavior is correct: with trusted WebDriver BiDi key
+  actions, Tab/Shift+Tab traversal repeatedly returns `activeElement` to
+  `.skip-link` (headed Wayland, headed XWayland and headless alike). The app
+  ships standard `:focus-visible`/`:focus` styles (`css/planner.css`: 3px
+  solid outline, `transform: none`), consistent with WCAG 2.4.7; the identical
+  strict check passes in Chrome.
+- Environment evidence: `browsingContext.activate` is now supported by
+  Firefox 157 (the earlier "unsupported" observation is stale) but does not
+  move compositor keyboard focus; `window.focus()` is ineffective; Snap
+  Firefox cannot open the X display (`MOZ_ENABLE_WAYLAND=0` fails with
+  "cannot open display"), while a non-Snap Firefox 157.0 tarball with
+  `GDK_BACKEND=x11` runs on XWayland; there `xdotool windowactivate` sets
+  X-level active/focused state yet keyboard focus never moves, XTEST
+  pointer/keyboard events do not grant focus, and sole-window-on-empty-desktop
+  placement is still denied. No screen lock and no remote-desktop session were
+  active (`LockedHint=no`, no RDP/VNC listener). GNOME Shell Eval is disabled,
+  so shell state cannot be inspected or changed.
+- Conclusion: the visible-keyboard-focus criterion for Firefox is
+  **UNVERIFIED — ENVIRONMENT-BLOCKED** on this machine — neither passed nor
+  failed. Real-user keyboard reproduction (a Firefox window that actually
+  receives OS input focus) remains the acceptance gate. Reproduction commands
+  and probe evidence: see the PR/commit message of
+  `fix/v2-firefox-keyboard-environment-blocked`; run the strict diagnostic via
+
+  ```bash
+  python3 v2/frontend/tests/run-final-acceptance-tests.py --browser firefox \
+    --firefox-headed --firefox-profile-parent "$HOME/snap/firefox/common"
+  ```
+- Regression guard added: the Firefox smoke suite now exercises trusted
+  traversal to the skip link (`Firefox: trusted keyboard traversal returns to
+  the skip link`), so a focus-order regression would be caught without OS
+  window focus. It deliberately does not evaluate `:focus-visible`/outline and
+  does not claim visible-focus acceptance; the strict headed assertion is
+  unchanged. The smoke suite is now 9 checks.
+
 ## Repeatable verification and local artifacts
 
 Commands from the owned checkout:
