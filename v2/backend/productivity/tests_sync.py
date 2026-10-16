@@ -174,6 +174,58 @@ class TaskSyncTests(TestCase):
         payload = result["results"][0]["record"]
         self.assertEqual([b["id"] for b in payload.get("retiredPlannedBreaks") or []], [break_id])
 
+    def test_fractional_durations_survive_synchronization(self):
+        """Integration finding 2026-10-15: the approved domain accepts any
+        positive finite minute value; the server previously rejected or lost
+        fractional durations, so a locally valid task could never synchronize."""
+        fractional = str(uuid.uuid4())
+        integer = str(uuid.uuid4())
+        record = task_record(sessionPlan=[{"id": fractional, "activeMinutes": 0.5},
+                                          {"id": integer, "activeMinutes": 25}])
+        record["plannedBreaks"] = [{"id": str(uuid.uuid4()), "breakMinutes": 2.5,
+                                    "afterFocusItemId": fractional,
+                                    "beforeFocusItemId": integer}]
+        created = push(self.scope, {"kind": "task", "record": record})
+        self.assertEqual(created["results"][0]["status"], "accepted", created)
+        payload = created["results"][0]["record"]
+        self.assertEqual(payload["sessionPlan"][0]["activeMinutes"], 0.5)
+        self.assertEqual(payload["plannedBreaks"][0]["breakMinutes"], 2.5)
+        # An identical retry stays a duplicate; the fractional content matches.
+        retry = push(self.scope, {"kind": "task", "record": record})
+        self.assertEqual(retry["results"][0]["status"], "duplicate")
+        # A fractional edit against the accepted revision is a new revision.
+        revision = payload["recordRevision"]
+        edited = push(self.scope, {"kind": "task", "baseRevision": revision,
+                                   "record": {**record,
+                                              "sessionPlan": [{"id": fractional, "activeMinutes": 12.5},
+                                                              {"id": integer, "activeMinutes": 25}]}})
+        self.assertEqual(edited["results"][0]["status"], "accepted", edited)
+        # The stale base stays a conflict for fractional content too.
+        stale = push(self.scope, {"kind": "task", "baseRevision": revision,
+                                  "record": {**record,
+                                             "sessionPlan": [{"id": fractional, "activeMinutes": 0.75},
+                                                             {"id": integer, "activeMinutes": 25}]}})
+        self.assertEqual(stale["results"][0]["status"], "conflict")
+
+    def test_zero_and_non_numeric_durations_are_rejected(self):
+        for minutes in (0, -1, "25", None, True):
+            record = task_record(sessionPlan=[{"id": str(uuid.uuid4()), "activeMinutes": minutes}])
+            result = push(self.scope, {"kind": "task", "record": record})
+            self.assertEqual(result["results"][0]["status"], "rejected", minutes)
+
+    def test_malformed_record_identities_reject_their_own_op(self):
+        """A non-UUID client identity is a malformed payload: it must reject
+        its own op, never fail the whole push batch with a server error."""
+        valid_record = task_record()
+        result = push(self.scope,
+                      {"kind": "task", "record": {**task_record(), "id": "orphan-task"}},
+                      {"kind": "task", "record": valid_record})
+        self.assertEqual(result["results"][0]["status"], "rejected")
+        self.assertEqual(result["results"][0]["code"], "validation")
+        self.assertIn("not a valid UUID", result["results"][0]["message"])
+        self.assertEqual(result["results"][1]["status"], "accepted",
+                         "a malformed op must not fail the rest of the batch")
+
     def test_pull_returns_session_plan_in_plan_order(self):
         first, second = str(uuid.uuid4()), str(uuid.uuid4())
         record = task_record(sessionPlan=[{"id": first, "activeMinutes": 25},

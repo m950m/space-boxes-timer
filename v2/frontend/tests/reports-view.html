@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Activity reports view regression tests</title>
+<body>
+  <input id="view-day" type="date" value="2026-10-15">
+  <button id="reports-refresh" type="button">Refresh activity</button>
+  <div id="reports-output" aria-busy="false"></div>
+  <p id="reports-status" role="status"></p>
+  <p id="reports-error" role="alert"></p>
+<script type="module">
+  // The production reports-view.js runs unmodified against a scripted store,
+  // so read timing and failures are deterministic. No server is involved.
+  const checks = [];
+  const check = (name, ok, detail) => checks.push(`${ok ? "PASS" : "FAIL"} ${name}${ok || detail === undefined ? "" : `: ${detail}`}`);
+  const assert = (name, ok, detail) => { check(name, ok, detail); if (!ok) throw new Error(name); };
+
+  const DAY_A = "2026-10-15";
+  const DAY_B = "2026-10-16";
+  const emptyState = () => ({ ownershipScopeId: "scope", revision: 0, reservation: null,
+    sessions: [], evidence: [], reconciliations: [], authorityChanges: [] });
+
+  function scriptedStore(reads) {
+    const consumed = [];
+    return {
+      consumed,
+      loadFocus() {
+        const next = reads.shift();
+        if (next === undefined) throw new Error("unexpected extra read");
+        consumed.push(next);
+        return new Promise((resolve, reject) => {
+          setTimeout(next.fail ? () => reject(new TypeError("read failed"))
+            : () => resolve(emptyState()), next.delayMs ?? 0);
+        });
+      },
+    };
+  }
+
+  const switchDay = (value) => {
+    const day = document.getElementById("view-day");
+    day.value = value;
+    day.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  const settle = () => new Promise((resolve) => {
+    const output = document.getElementById("reports-output");
+    const observer = new MutationObserver(() => {
+      if (output.getAttribute("aria-busy") === "false") {
+        observer.disconnect();
+        setTimeout(resolve, 20);
+      }
+    });
+    observer.observe(output, { attributes: true });
+    if (output.getAttribute("aria-busy") === "false") {
+      observer.disconnect();
+      setTimeout(resolve, 20);
+    }
+  });
+
+  try {
+    const { mountReports } = await import("../js/reports/reports-view.js");
+
+    // Scenario 1 — a day switch during an in-flight read must re-run for the
+    // selected day (integration finding 2026-10-15: the request was dropped).
+    const store = scriptedStore([{ delayMs: 250 }, { delayMs: 0 }]);
+    const view = mountReports(store);
+    switchDay(DAY_A);
+    switchDay(DAY_B);
+    await settle();
+    assert("a day switch during an in-flight read triggers the follow-up read",
+      store.consumed.length === 2, `${store.consumed.length} reads consumed`);
+    assert("the follow-up read renders the selected day's activity",
+      document.getElementById("reports-status").textContent.includes(DAY_B),
+      document.getElementById("reports-status").textContent);
+    assert("the refresh control is usable again after the reads settle",
+      !document.getElementById("reports-refresh").disabled);
+
+    // Scenario 2 — a failed read surfaces honestly and recovers on refresh.
+    const failing = scriptedStore([{ fail: true }, { delayMs: 0 }]);
+    mountReports(failing);
+    switchDay(DAY_A);
+    await settle();
+    assert("a failed read reports the error instead of inventing data",
+      document.getElementById("reports-error").textContent.includes("read failed"),
+      document.getElementById("reports-error").textContent);
+    document.getElementById("reports-refresh").click();
+    await settle();
+    assert("an explicit refresh after a failed read recovers",
+      document.getElementById("reports-error").textContent === ""
+      && document.getElementById("reports-status").textContent.includes(DAY_A),
+      document.getElementById("reports-status").textContent);
+  } catch (error) {
+    checks.push(`FAIL ${error && error.stack ? error.stack : error}`);
+  }
+  document.getElementById("reports-status").textContent = checks.every((line) => line.startsWith("PASS"))
+    ? "reports checks done" : "reports checks failed";
+  await fetch("/results", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checks }) });
+</script>
+</body>
+</html>

@@ -27,10 +27,16 @@ def plan_day_payload(plan_day):
     }
 
 
+def _minutes(value):
+    """DecimalField values become plain JSON numbers (float(Decimal) is exact
+    for the 4-decimal minute values this schema stores)."""
+    return None if value is None else float(value)
+
+
 def planned_break_payload(break_):
     return {
         "id": str(break_.pk),
-        "breakMinutes": break_.break_minutes,
+        "breakMinutes": _minutes(break_.break_minutes),
         "afterFocusItemId": str(break_.after_focus_item_id) if break_.after_focus_item_id else None,
         "beforeFocusItemId": str(break_.before_focus_item_id) if break_.before_focus_item_id else None,
         "retired": break_.retired_at is not None,
@@ -41,7 +47,7 @@ def focus_item_payload(item):
     return {
         "id": str(item.pk),
         "position": item.position,
-        "activeMinutes": item.active_minutes,
+        "activeMinutes": _minutes(item.active_minutes),
         "retired": item.retired_at is not None,
     }
 

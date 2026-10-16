@@ -69,6 +69,24 @@ class StartTests(TestCase):
         self.assertEqual(state["activity"]["confirmedActiveMs"], 0)
         self.assertEqual(state["session"]["startingSnapshot"]["planDayId"], DAY)
 
+    def test_fractional_minute_item_yields_millisecond_target(self):
+        """Integration finding 2026-10-15: fractional configured durations are
+        valid plans; the frozen target must keep millisecond resolution."""
+        item_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
+        SyncService(self.scope).push([
+            {"kind": "task", "record": {
+                "id": task_id, "planDayId": DAY, "title": "Short sprint",
+                "plannedStart": "09:30", "classification": "extra",
+                "sessionPlan": [{"id": item_id, "activeMinutes": 0.5}],
+            }},
+        ])
+        state = FocusEngine(self.scope).apply(
+            start_command(task_id, item_id, revision=self.scope.focus_revision)
+        )
+        self.assertEqual(state["session"]["targetMs"], 30000)
+        self.assertEqual(state["session"]["startingSnapshot"]["activeMinutes"], 0.5)
+
     def test_second_start_rejected_single_reservation(self):
         engine = FocusEngine(self.scope)
         engine.apply(start_command(self.task_id, self.item_id, revision=0))

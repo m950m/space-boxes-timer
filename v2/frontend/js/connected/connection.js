@@ -138,7 +138,10 @@ export class Connection {
       recordRevisions: {},
       contentHashes: {},
       sessionIds: [],
-      lastPullRevision: response.scopeRevision,
+      // Start the pull cursor at 0: the next synchronization downloads the
+      // records other devices uploaded before this device connected. Local
+      // copies of this device's own uploads are already `known` and skipped.
+      lastPullRevision: 0,
       lastSyncAt: Date.now(),
     };
     response.results.forEach((result, index) => {

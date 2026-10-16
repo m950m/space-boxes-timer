@@ -12,6 +12,26 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
+
+
+def wait_for_profile_release(profile, process, timeout=15):
+    """Chrome keeps a Singleton* lock trio inside its user-data-dir while the
+    process is alive. Launching the restart phase before the suite-phase
+    browser has fully let go can yield a fresh empty IndexedDB — observed as
+    the intermittent CI-only 'Restart local identity lost' failure. Wait for
+    the locks (and the process) to be gone before reusing the profile."""
+    locks = [pathlib.Path(profile, name) for name in
+             ("SingletonLock", "SingletonSocket", "SingletonCookie")]
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None and not any(lock.exists() for lock in locks):
+            return
+        time.sleep(.05)
+    # Not fatal by itself: a held lock only makes identity loss more likely.
+    # The restart-phase assertions still decide pass/fail honestly.
+    print(f"NOTE profile locks still present after {timeout}s: "
+          f"{[str(lock) for lock in locks if lock.exists()] or 'process alive'}", flush=True)
 
 
 def main():
