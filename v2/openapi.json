@@ -1,0 +1,3006 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Space Boxes V2 implemented API",
+    "version": "2.0.0",
+    "description": "Same-origin Django JSON API derived from accounts/productivity routes, views, serializers and tests at integration baseline d85353bf02f094c49c735be17598393871493398. Paths have no trailing slash. Browser session authentication, no bearer tokens. In release use HTTPS; SecurityMiddleware redirects plain HTTP with 301 before view processing. Session cookie spaceboxes_session is Secure/HttpOnly/SameSite=Lax; csrftoken is Secure/SameSite=Lax and readable by the client. Unsafe requests (including anonymous login/register/recovery/logout) require CSRF cookie plus X-CSRFToken, and a trusted Origin or HTTPS Referer. OpenAPI cookie schemes document browser behavior; interactive cross-origin tools cannot bypass CSRF. CSRF failure is HTML 403, not the ApiError JSON envelope. JSON parser accepts an empty body as {}, ignores Content-Type, and rejects non-object/invalid JSON. Extra object keys are generally ignored. GET-decorated productivity routes reject HEAD with 405; undecorated csrf/me accept HEAD. This contract documents intended valid request shapes without promising every malformed input is handled uniformly. Frontend, static files and Django admin are outside this API contract."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v2/csrf": {
+      "get": {
+        "operationId": "csrf_token",
+        "summary": "csrf token",
+        "description": "Sets csrftoken cookie and returns a masked token for X-CSRFToken. Refresh after registration/login, which rotate CSRF state. This view has no method decorator: GET/HEAD are documented; other methods reach the same view, with CSRF middleware for unsafe methods. No CORS endpoint is implemented.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "csrfToken": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "csrfToken"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Host or malformed transport request can produce Django HTML 400.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/register": {
+      "post": {
+        "operationId": "register",
+        "summary": "register",
+        "description": "Normalizes email to lowercase, creates scope, rotates session, signs in. No registration-verification endpoint exists.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json, validation (email/password validators), or generic registration_failed; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "login",
+        "description": "Rotates session and CSRF state. Login throttling returns generic 401, not 429.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json or validation; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_credentials: unknown/inactive account, incorrect credentials and failed-attempt throttle are indistinguishable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "logout",
+        "description": "Idempotent and anonymous-safe. Clears the current session; body is ignored.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Host or malformed transport request can produce Django HTML 400.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/logout-all": {
+      "post": {
+        "operationId": "logout_all",
+        "summary": "logout all",
+        "description": "Revokes all authentication sessions when signed in; anonymous calls also return ok. Body is ignored.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Host or malformed transport request can produce Django HTML 400.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/me": {
+      "get": {
+        "operationId": "current_account",
+        "summary": "current account",
+        "description": "Current email/scope. No method decorator: GET/HEAD are documented; other methods reach this same view, unsafe methods require CSRF.",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Host or malformed transport request can produce Django HTML 400.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/recovery/request": {
+      "post": {
+        "operationId": "request_recovery",
+        "summary": "request recovery",
+        "description": "Known/unknown/throttled email produces the same 200 body. Real SMTP failure can produce 500. No recovery secret is returned in the API.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json or validation; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/recovery/confirm": {
+      "post": {
+        "operationId": "confirm_recovery",
+        "summary": "confirm recovery",
+        "description": "Sets password, consumes token, revokes all sessions; does not sign in.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json, validation, or invalid_token (single-use, expired, wrong or account-throttled token); invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: IP attempt budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token",
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sync/pull": {
+      "get": {
+        "operationId": "pull",
+        "summary": "pull",
+        "description": "",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pull"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation: since must be a non-negative integer; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Exclusive scope revision cursor, not a timestamp."
+          }
+        ]
+      }
+    },
+    "/api/v2/sync/push": {
+      "post": {
+        "operationId": "push",
+        "summary": "push",
+        "description": "HTTP 200 even for per-op rejected/conflict results; inspect every status/code/message. Partial success is deliberate. Per-op error codes include validation, conflict, unknown_plan_day, primary_cap, duplicate_evidence, duplicate_authority_change and duplicate_decision; not HTTP 409.",
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json or validation: top-level ops must be a list; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Push"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/focus/state": {
+      "get": {
+        "operationId": "focus_state",
+        "summary": "focus state",
+        "description": "Current reserved session only, or null session/reservation. Does not accrue focus.",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Host or malformed transport request can produce Django HTML 400.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/focus/command": {
+      "post": {
+        "operationId": "focus_command",
+        "summary": "focus command",
+        "description": "",
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json or validation; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_revision, no_reservation, stale_controller, reservation_exists, duplicate_session, invalid_state, duplicate_decision, duplicate_evidence, duplicate_authority_change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FocusCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/export": {
+      "get": {
+        "operationId": "export_account",
+        "summary": "export account",
+        "description": "Account-isolated machine-readable attachment; includes accepted productivity state, not credentials.",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename=\"space-boxes-export-YYYY-MM-DD.json\""
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Host or malformed transport request can produce Django HTML 400.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/delete": {
+      "post": {
+        "operationId": "delete_account",
+        "summary": "delete account",
+        "description": "Deletes canonical account/productivity data and revokes sessions; browser-local data is untouched. deletedScopeRows is the deletion service count, not a count of all cascaded records.",
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "deletedScopeRows": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "deletedScopeRows"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthenticated: sign in required, or no connected scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json; invalid Host returns Django HTML",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "invalid_credentials: password confirmation failed (JSON); alternatively Django CSRF rejection returns text/html",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "spaceboxes_session"
+      },
+      "csrfCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "csrftoken"
+      },
+      "csrfHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRFToken"
+      }
+    },
+    "schemas": {
+      "Instant": {
+        "description": "Input accepts non-negative epoch milliseconds or a timezone-aware ISO datetime. Output uses integer epoch milliseconds.",
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0
+          },
+          {
+            "type": "string",
+            "format": "date-time"
+          }
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "scopeId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "scopeId"
+        ]
+      },
+      "AccountResponse": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/Account"
+          }
+        },
+        "required": [
+          "account"
+        ]
+      },
+      "Credentials": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "Ok": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "PlanDay": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "timezone"
+        ]
+      },
+      "FocusItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "activeMinutes": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "activeMinutes"
+        ]
+      },
+      "PlannedBreak": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "breakMinutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "afterFocusItemId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "beforeFocusItemId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "planDayId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "plannedStart": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "extra"
+            ]
+          },
+          "sessionPlan": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FocusItem"
+            },
+            "minItems": 1
+          },
+          "parentTaskId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url"
+              ]
+            }
+          },
+          "plannedBreaks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlannedBreak"
+            }
+          },
+          "retiredFocusItems": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "activeMinutes": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id"
+              ]
+            }
+          },
+          "retiredPlannedBreaks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlannedBreak"
+            }
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Instant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cancelledAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Instant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "originScopeKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recordRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "planDayId",
+          "title",
+          "plannedStart",
+          "classification",
+          "sessionPlan"
+        ],
+        "description": "Task edits replace the planning aggregate. sessionPlan must be nonempty, positive finite minutes with unique identities. Parent must be in scope and acyclic; maximum three primary tasks per day per scope (including subtasks). Planned breaks reference adjacent current items; absent/invalid breakMinutes become null. History-referenced items must be retained or retired. Fields omitted from edits can clear their previous values. Revision metadata is returned by the server."
+      },
+      "Evidence": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "focus",
+              "pause",
+              "uncertain"
+            ]
+          },
+          "startAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "endAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Instant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "elapsedMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "originContextId": {
+            "type": "string"
+          },
+          "controlVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "continuity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "confirmed",
+                  "uncertain"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "originScopeKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "startAt",
+          "endAt",
+          "originContextId",
+          "controlVersion"
+        ]
+      },
+      "Part": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "focus",
+              "pause",
+              "interruption"
+            ]
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "episodeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "elapsedMs"
+        ],
+        "description": "Interruption requires episodeId. Unknown pause accepts only pause parts; uncertain focus accepts focus/interruption. Ordered parts must total elapsedMs; reliable durations cannot be replaced."
+      },
+      "Decision": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evidenceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "decidedAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "originContextId": {
+            "type": "string"
+          },
+          "controlVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            },
+            "minItems": 1
+          },
+          "originScopeKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "evidenceId",
+          "decidedAt",
+          "originContextId",
+          "controlVersion",
+          "elapsedMs",
+          "parts"
+        ]
+      },
+      "AuthorityChange": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "start",
+              "record",
+              "pause",
+              "resume",
+              "end",
+              "transfer",
+              "reconcile"
+            ]
+          },
+          "at": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "originContextId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "priorControlVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resultingControlVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "at",
+          "originContextId",
+          "version"
+        ]
+      },
+      "Point": {
+        "type": "object",
+        "properties": {
+          "evidenceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decisionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "offsetMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observedAt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plannedItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startingSnapshot": {
+            "type": "object",
+            "properties": {
+              "planDayId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "planDayId"
+            ],
+            "additionalProperties": true
+          },
+          "targetMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "actualStart": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "ending": {
+            "type": "object",
+            "properties": {
+              "recordedAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "ended-early"
+                ]
+              },
+              "point": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Point"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "recordedAt",
+              "outcome"
+            ]
+          },
+          "recordRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "originScopeKey": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "minItems": 1
+          },
+          "authorityChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityChange"
+            }
+          },
+          "reconciliations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "plannedItemId",
+          "startingSnapshot",
+          "targetMs",
+          "actualStart"
+        ],
+        "description": "Sync imports ended history only: ending and contiguous closed evidence starting at actualStart are required for a new session. Completed outcome needs sufficient confirmed focus; ended-early retains unmet focus. Embedded evidence/authorityChanges/reconciliations are import fields; output sends these as separate feed arrays. Unknown snapshot and ending-point fields are preserved. The server startingSnapshot also includes title, classification, timezone, plannedStart, plannedItemId, activeMinutes and optional parentTaskId for connected starts; imported snapshot objects are preserved rather than rebuilt."
+      },
+      "RecordedBreak": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "endAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Instant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plannedBreakId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "precedingSessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "originScopeKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "startAt"
+        ]
+      },
+      "Exposure": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "startAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "endAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "continuity": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "uncertain"
+            ]
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "originScopeKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "startAt",
+          "endAt",
+          "continuity"
+        ]
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "noticeAcknowledgedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Instant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "domains"
+        ]
+      },
+      "Prefs": {
+        "type": "object",
+        "properties": {
+          "cadence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "daily",
+                  "weekly",
+                  "monthly"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email",
+                "notifications"
+              ]
+            }
+          }
+        },
+        "description": "Preferences only; scheduled delivery is not implemented."
+      },
+      "Reservation": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "paused"
+            ]
+          },
+          "controllerId": {
+            "type": "string"
+          },
+          "controlVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "evidenceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "state",
+          "controllerId",
+          "controlVersion",
+          "evidenceId"
+        ]
+      },
+      "Activity": {
+        "type": "object",
+        "properties": {
+          "confirmedActiveMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remainingMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pauseMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "interruptionMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "interruptionCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completionPoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Point"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "confirmedActiveMs",
+          "remainingMs",
+          "pauseMs",
+          "interruptionMs",
+          "interruptionCount",
+          "completionPoint"
+        ]
+      },
+      "Pull": {
+        "type": "object",
+        "properties": {
+          "planDays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanDay"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            }
+          },
+          "authorityChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityChange"
+            }
+          },
+          "breaks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordedBreak"
+            }
+          },
+          "exposure": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Exposure"
+            }
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Config"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prefs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Prefs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scopeRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "focusRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ownershipScopeId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "planDays",
+          "tasks",
+          "sessions",
+          "evidence",
+          "decisions",
+          "authorityChanges",
+          "breaks",
+          "exposure",
+          "config",
+          "prefs",
+          "reservation",
+          "scopeRevision",
+          "focusRevision",
+          "ownershipScopeId"
+        ],
+        "description": "Records changed after since; reservation is always current. config/prefs are null when unchanged or absent. No pagination or deletion tombstones are implemented."
+      },
+      "Export": {
+        "type": "object",
+        "properties": {
+          "planDays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanDay"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            }
+          },
+          "authorityChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityChange"
+            }
+          },
+          "breaks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordedBreak"
+            }
+          },
+          "exposure": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Exposure"
+            }
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Config"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prefs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Prefs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exportedAt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "format": {
+            "const": "space-boxes-v2-export/1"
+          },
+          "account": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "email"
+            ]
+          },
+          "scope": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "focusRevision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "focusRevision"
+            ]
+          }
+        },
+        "required": [
+          "planDays",
+          "tasks",
+          "sessions",
+          "evidence",
+          "decisions",
+          "authorityChanges",
+          "breaks",
+          "exposure",
+          "config",
+          "prefs",
+          "reservation",
+          "exportedAt",
+          "format",
+          "account",
+          "scope"
+        ]
+      },
+      "EvidenceClose": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "elapsedMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "continuity": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "uncertain"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "endAt",
+          "continuity"
+        ],
+        "description": "Close existing evidence once. Already closed evidence returns duplicate; uncertain focus is reclassified. No controller field is required by this sync handler."
+      },
+      "Push": {
+        "type": "object",
+        "properties": {
+          "ops": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "plan_day",
+                        "plan-day"
+                      ]
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/PlanDay"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "task"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "session"
+                    },
+                    "record": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Session"
+                        },
+                        {
+                          "required": [
+                            "ending",
+                            "evidence"
+                          ]
+                        }
+                      ]
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "evidence_close",
+                        "evidence-close"
+                      ]
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/EvidenceClose"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "break"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/RecordedBreak"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "exposure"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/Exposure"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "config"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/Config"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "prefs"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/Prefs"
+                    },
+                    "baseRevision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "record"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "ops"
+        ],
+        "description": "Independent atomic operations in list order; push referenced Plan Days/tasks before dependent records. baseRevision is used for task edits only. Matching retries return duplicate, stale task content returns conflict with canonical record. Unknown/malformed operations can be rejected inside a successful batch. Multiword kinds also accept hyphen aliases: plan-day and evidence-close."
+      },
+      "PushResult": {
+        "type": "object",
+        "properties": {
+          "scopeRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "duplicate",
+                    "conflict",
+                    "rejected"
+                  ]
+                },
+                "record": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "index",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "scopeRevision",
+          "results"
+        ]
+      },
+      "FocusCommand": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "start",
+              "record",
+              "pause",
+              "resume",
+              "end",
+              "transfer",
+              "reconcile"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextId": {
+            "type": "string"
+          },
+          "at": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plannedItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "evidenceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "observation": {
+            "type": "object",
+            "properties": {
+              "at": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "certainty": {
+                "type": "string",
+                "enum": [
+                  "confirmed",
+                  "uncertain"
+                ]
+              },
+              "elapsedMs": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "description": "Optional. If nonempty, at must equal command at. Certainty defaults to confirmed; elapsedMs defaults to null. Transfer forces focus uncertainty."
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Part"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "contextId",
+          "at",
+          "expectedRevision"
+        ],
+        "description": "start also requires sessionId/taskId/plannedItemId/timezone/evidenceId. pause/resume/record/transfer require a fresh evidenceId unless this command completes the session; end does not. transfer requires confirmed=true and may come from an observer. reconcile requires evidenceId/elapsedMs/nonempty parts. expectedRevision must equal current focusRevision; an accepted controller is required except for start/transfer. reconcile still requires a reservation. Command UUID retries are rejected, not idempotently replayed. Invalid UUIDs and some malformed nested objects are not uniformly converted to JSON errors by the current implementation.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "start"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "sessionId",
+                "taskId",
+                "plannedItemId",
+                "timezone",
+                "evidenceId"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "reconcile"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "evidenceId",
+                "elapsedMs",
+                "parts"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "transfer"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "confirmed"
+              ],
+              "properties": {
+                "confirmed": {
+                  "const": true
+                }
+              }
+            }
+          }
+        ]
+      },
+      "FocusState": {
+        "type": "object",
+        "properties": {
+          "focusRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Session"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "focusRevision",
+          "reservation",
+          "session"
+        ]
+      },
+      "FocusResult": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "session": {
+            "$ref": "#/components/schemas/Session"
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          }
+        },
+        "required": [
+          "revision",
+          "session",
+          "reservation",
+          "activity"
+        ]
+      }
+    }
+  }
+}

@@ -1,5 +1,17 @@
 # V2 release preparation and local staging
 
+For the subsequently added provider-independent Docker stack, TLS/container
+rehearsal and implemented OpenAPI contract, see [CONTAINERS.md](CONTAINERS.md).
+Prepared (not applied) zero-cost hosting configuration for Render Free and
+Supabase Free, with operations and incident procedures, is in
+[deploy/HOSTING-FREE-TIERS.md](deploy/HOSTING-FREE-TIERS.md). The current
+[course evidence map](PROJECT-EVALUATION.md) and
+[technical delivery record](TECHNICAL-COMPLETION.md) distinguish completed
+artifacts from owner-only publication, course and production gates. The original
+validation/checkpoint below is historical for its recorded revision; PR #61 and
+the IndexedDB stabilization in PR #62 are now merged into the supplied
+`d85353bf02f094c49c735be17598393871493398` integration baseline.
+
 This prepares the existing Django monolith for a release candidate. It selects
 no hosting provider and performs no deployment. Python **3.14**, Django **5.2.18**
 and PostgreSQL retain the existing runtime choices; Gunicorn **26.2.0** runs WSGI and

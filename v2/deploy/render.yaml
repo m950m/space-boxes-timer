@@ -1,0 +1,62 @@
+# Render Free web-service declaration for Space Boxes V2.
+# Committing this file creates nothing: Blueprints apply only when the owner
+# creates a Blueprint instance in Render. See HOSTING-FREE-TIERS.md for the
+# verified free-tier limits, the Supabase PostgreSQL wiring, migrations,
+# backup/restore and the owner gates that remain before any deployment.
+#
+# TLS terminates at Render's edge proxy, so the container runs the existing
+# image without SPACE_BOXES_TLS_CERT/KEY: start-staging.sh then serves plain
+# HTTP to the proxy while Django's DJANGO_TRUST_PROXY_HTTPS restores the
+# HTTPS security behavior (Secure cookies, redirects) behind it. Render
+# ignores the image's Docker HEALTHCHECK (which targets the self-TLS loopback
+# stack) and uses healthCheckPath below instead.
+services:
+  - type: web
+    name: space-boxes-v2
+    runtime: docker
+    plan: free
+    dockerfilePath: v2/Dockerfile
+    dockerContext: v2
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false # e.g. space-boxes-v2.onrender.com
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false # e.g. https://space-boxes-v2.onrender.com
+      - key: DJANGO_TRUST_PROXY_HTTPS
+        value: "1" # Only valid while the Render proxy is the sole ingress.
+      - key: SPACE_BOXES_DB_NAME
+        sync: false # Supabase project database name, e.g. postgres.
+      - key: SPACE_BOXES_DB_USER
+        sync: false # Dedicated application role; see HOSTING-FREE-TIERS.md.
+      - key: SPACE_BOXES_DB_PASSWORD
+        sync: false
+      - key: SPACE_BOXES_DB_HOST
+        sync: false # Session-pooler host, e.g. aws-0-<region>.pooler.supabase.com.
+      - key: SPACE_BOXES_DB_PORT
+        value: "5432"
+      - key: SPACE_BOXES_DB_SSLMODE
+        value: require
+      - key: SPACE_BOXES_BIND
+        value: 0.0.0.0:10000
+      - key: SPACE_BOXES_WORKERS
+        value: "2"
+      - key: SPACE_BOXES_EMAIL_HOST
+        sync: false # Owner-selected relay; no provider is chosen here.
+      - key: SPACE_BOXES_EMAIL_PORT
+        value: "587"
+      - key: SPACE_BOXES_EMAIL_USE_TLS
+        value: "1"
+      - key: SPACE_BOXES_EMAIL_USE_SSL
+        value: "0"
+      - key: SPACE_BOXES_EMAIL_USER
+        sync: false
+      - key: SPACE_BOXES_EMAIL_PASSWORD
+        sync: false
+      - key: SPACE_BOXES_FROM_EMAIL
+        sync: false
