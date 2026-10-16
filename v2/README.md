@@ -774,9 +774,11 @@ Implemented boundaries worth knowing:
   after core V2).
 
 Settings, the public development-only secret, and Django static serving remain
-local-development configuration. The connected deployment story (HTTPS
-termination, SMTP, production secrets, Docker) remains owner-gated future
-work. Approved [product requirements](../_docs/product/v2-prd.md),
+the defaults for local development. For fail-fast release settings, environment
+variables, Gunicorn/static serving, isolated staging validation and backup/rollback
+commands, see [release preparation](RELEASE.md). Hosting, public HTTPS, SMTP and
+backup policy still require owner configuration; no deployment is performed.
+Approved [product requirements](../_docs/product/v2-prd.md),
 [owner decisions](../_docs/product/owner-decisions.md),
 [architecture](../_docs/architecture/architecture.md) and
 [data model](../_docs/data/v2-data-model.md) describe broader approved scope;

@@ -1,0 +1,13 @@
+# Release lock: CPython 3.14, Linux x86_64 (glibc >= 2.17).
+# All runtime dependencies; hashes identify the validated wheel artifacts.
+# Regenerate from reviewed requirements + transitive pins; see RELEASE.md.
+--only-binary=:all:
+--require-hashes
+
+asgiref==3.12.1 --hash=sha256:fe386d1c2bff7259ea95929266d12a8cf9a8b5a1c2598402967d8792e7a7c094
+django==5.2.18 --hash=sha256:92ed81d500be6408ecd704d7bd1366c534f30427bffcc63c5fefb129561aec7c
+gunicorn==26.2.0 --hash=sha256:bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3
+psycopg[binary]==3.2.13 --hash=sha256:a481374514f2da627157f767a9336705ebefe93ea7a0522a6cbacba165da179a
+psycopg-binary==3.2.13 --hash=sha256:c96cb5a27e68acac6d74b64fca38592a692de9c4b7827339190698d58027aa45
+sqlparse==0.6.0 --hash=sha256:b861c0288ce2fa56209a9a6412d2e066ac664b3873b89c26c9d8415e8e32996f
+whitenoise==6.12.0 --hash=sha256:fc5e8c572e33ebf24795b47b6a7da8da3c00cff2349f5b04c02f28d0cc5a3cc2
