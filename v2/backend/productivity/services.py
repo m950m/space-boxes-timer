@@ -64,8 +64,8 @@ def export_account_data(scope):
         "exposure": [
             serialization.exposure_payload(x) for x in ExposureRecord.objects.filter(scope=scope)
         ],
-        "config": serialization.config_payload(scope),
-        "prefs": serialization.prefs_payload(scope),
+        "config": serialization.config_payload(getattr(scope, "domain_configuration", None)),
+        "prefs": serialization.prefs_payload(getattr(scope, "report_preferences", None)),
         "reservation": serialization.reservation_payload(scope),
     }
 

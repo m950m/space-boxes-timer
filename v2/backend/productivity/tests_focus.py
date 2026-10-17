@@ -69,6 +69,20 @@ class StartTests(TestCase):
         self.assertEqual(state["activity"]["confirmedActiveMs"], 0)
         self.assertEqual(state["session"]["startingSnapshot"]["planDayId"], DAY)
 
+    def test_incremental_pull_includes_closed_evidence(self):
+        engine = FocusEngine(self.scope)
+        engine.apply(start_command(self.task_id, self.item_id, revision=0))
+        cursor = SyncService(self.scope).pull(0)["scopeRevision"]
+        engine.apply({
+            "type": "record", "id": str(uuid.uuid4()), "contextId": "ctx-A",
+            "at": T0 + 1000, "expectedRevision": 1, "evidenceId": str(uuid.uuid4()),
+            "observation": {"at": T0 + 1000, "certainty": "confirmed", "elapsedMs": 1000},
+        })
+        incremental = SyncService(self.scope).pull(cursor)
+        closed = [row for row in incremental["evidence"] if row["endAt"] is not None]
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0]["elapsedMs"], 1000)
+
     def test_fractional_minute_item_yields_millisecond_target(self):
         """Integration finding 2026-10-15: fractional configured durations are
         valid plans; the frozen target must keep millisecond resolution."""
@@ -302,6 +316,24 @@ class ReconcileTests(TestCase):
                 "parts": [{"kind": "focus", "elapsedMs": 100_000}],
             })
         self.assertIn("entire uncertain interval", caught.exception.message)
+
+    def test_ended_session_can_be_reconciled_without_a_reservation(self):
+        self.engine.apply({
+            "type": "end", "id": str(uuid.uuid4()), "contextId": "ctx-A",
+            "at": T0 + 350_000, "expectedRevision": self.scope.focus_revision,
+            "observation": {"at": T0 + 350_000, "certainty": "confirmed", "elapsedMs": 50_000},
+        })
+        self.scope.refresh_from_db()
+        state = self.engine.apply({
+            "type": "reconcile", "id": str(uuid.uuid4()), "contextId": "other-device",
+            "at": T0 + 400_000, "expectedRevision": self.scope.focus_revision,
+            "evidenceId": self.evidence_id(), "elapsedMs": 300_000,
+            "parts": [{"kind": "focus", "elapsedMs": 200_000},
+                      {"kind": "interruption", "elapsedMs": 100_000, "episodeId": "ep1"}],
+        })
+        self.assertIsNone(state["reservation"])
+        self.assertEqual(state["activity"]["confirmedActiveMs"], 200_000)
+        self.assertEqual(state["activity"]["interruptionMs"], 100_000)
 
     def test_reconcile_completion_auto_ends(self):
         # A full-target uncertain interval confirmed as work by reconciliation

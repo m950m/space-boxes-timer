@@ -477,10 +477,10 @@ class SyncService:
 
     def _enforce_primary_cap(self, task):
         """Zero to three simultaneous Primary tasks per scope/Plan Day."""
-        if task.classification != "primary":
+        if task.classification != "primary" or task.cancelled_at is not None:
             return
         count = Task.objects.filter(
-            scope=self.scope, plan_day=task.plan_day, classification="primary"
+            scope=self.scope, plan_day=task.plan_day, classification="primary", cancelled_at__isnull=True
         ).count()
         if count > 3:
             raise ApiError(

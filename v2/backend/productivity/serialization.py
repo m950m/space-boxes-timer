@@ -217,10 +217,7 @@ def exposure_payload(record):
     return payload
 
 
-def config_payload(scope):
-    from .models import DomainConfiguration
-
-    config = getattr(scope, "domain_configuration", None)
+def config_payload(config):
     if config is None:
         return None
     return {
@@ -230,10 +227,7 @@ def config_payload(scope):
     }
 
 
-def prefs_payload(scope):
-    from .models import ReportPreferences
-
-    prefs = getattr(scope, "report_preferences", None)
+def prefs_payload(prefs):
     if prefs is None:
         return None
     return {"cadence": prefs.cadence, "channels": prefs.channels}
