@@ -144,6 +144,9 @@ tests and the staging rehearsal. Startup must not resolve unbounded dependencies
 
 ## Reproducible local verification
 
+Historical procedure below: `verify-staging.py` is retired. Use the disposable
+React/PostgreSQL and HTTPS container gates in [RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md).
+
 With a reachable local PostgreSQL server, its client tools (`pg_dump` and
 `pg_restore` matching the server version), OpenSSL and an isolated test role
 with CREATEDB, export `SPACE_BOXES_DB_HOST/PORT/USER/PASSWORD` and, for a local

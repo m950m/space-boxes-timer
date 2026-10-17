@@ -66,6 +66,9 @@ at this checkpoint; these checks are also in CI.
 packaging without deployment. The obsolete mocked UI smoke harness is replaced
 by separately labeled real and mocked tests. Generated assets/dependencies,
 private mail, browser traces and credentials are not committed.
+The pre-React `verify-staging.py` entry point is retired and fails before reading
+database settings; use the disposable runners above. Its historical backup and
+older-code rehearsal is not current V2 release evidence.
 
 ## Isolated staging setup and required inputs
 
