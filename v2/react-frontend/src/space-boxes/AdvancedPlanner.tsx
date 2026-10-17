@@ -1,15 +1,16 @@
 import {useEffect,useState,type FormEvent} from "react";
-import {refreshFeed,timezone,type PullFeed,type RemoteTask} from "./connected/live";
-import * as api from "./connected/api.js";
+import {timezone,type PullFeed,type RemoteTask} from "./connected/live";
+import type {Workspace} from "./workspace";
 
 type FocusItem = {id:string;activeMinutes:number};
 type PlannedBreak = {id:string;breakMinutes:number|null;afterFocusItemId?:string|null;beforeFocusItemId?:string|null};
 type Draft = {
   title:string; plannedStart:string; targetDay:string; classification:"primary"|"extra";
   parentTaskId:string|null; note:string; resources:string;
+  timezone:string;
   sessionPlan:FocusItem[]; breaks:string[];
 };
-type Props={day:string;onDayChange:(day:string)=>Promise<void>;onChanged:()=>Promise<void>;notify:(message:string)=>void};
+type Props={defaultMinutes:number;day:string;workspace:Workspace;onFocus:(task:RemoteTask,itemId:string)=>Promise<void>;onDayChange:(day:string)=>Promise<void>;onChanged:()=>Promise<void>;notify:(message:string)=>void};
 const defaultDay=()=>new Date().toLocaleDateString("en-CA");
 
 function resourceRows(text:string){
@@ -22,8 +23,8 @@ function resourceRows(text:string){
     return {url,label};
   });
 }
-function buildDraft(task:RemoteTask|null,day:string):Draft{
-  const sessionPlan=task?.sessionPlan?.length?task.sessionPlan.map(x=>({...x})):[{id:crypto.randomUUID(),activeMinutes:25}];
+function buildDraft(task:RemoteTask|null,day:string,defaultMinutes=25):Draft{
+  const sessionPlan=task?.sessionPlan?.length?task.sessionPlan.map(x=>({...x})):[{id:crypto.randomUUID(),activeMinutes:defaultMinutes}];
   const breaks: string[]=sessionPlan.slice(0,-1).map((item,i)=>{
     const next=sessionPlan[i+1];
     const existing=(task?.plannedBreaks||[] as PlannedBreak[]).find((b:any)=>b.afterFocusItemId===item.id&&b.beforeFocusItemId===next.id) as PlannedBreak|undefined;
@@ -33,6 +34,7 @@ function buildDraft(task:RemoteTask|null,day:string):Draft{
     title:task?.title||"",plannedStart:task?.plannedStart||"09:00",targetDay:task?.planDayId||day,
     classification:task?.classification||"primary",parentTaskId:task?.parentTaskId||null,
     note:task?.note||"",resources:(task?.resources||[]).map(r=>r.label?r.label+" | "+r.url:r.url).join("\n"),
+    timezone:timezone(),
     sessionPlan,breaks,
   };
 }
@@ -77,17 +79,17 @@ function writeRecord(previous:RemoteTask|null,draft:Draft){
   };
 }
 function errorMessage(error:unknown){return error instanceof Error?error.message:"The operation could not be completed.";}
-export function AdvancedPlanner({day,onDayChange,onChanged,notify}:Props){
+export function AdvancedPlanner({defaultMinutes,day,workspace,onFocus,onDayChange,onChanged,notify}:Props){
   const [feed,setFeed]=useState<PullFeed|null>(null);
   const [editing,setEditing]=useState<RemoteTask|null|undefined>(undefined);
-  const [draft,setDraft]=useState<Draft>(()=>buildDraft(null,day));
+  const [draft,setDraft]=useState<Draft>(()=>buildDraft(null,day,defaultMinutes));
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [dayInput,setDayInput]=useState(day);
   useEffect(()=>{setDayInput(day)},[day]);
   useEffect(()=>{
     let live=true;setLoading(true);setError("");
-    refreshFeed().then(data=>{if(live)setFeed(data)}).catch(e=>{if(live)setError(errorMessage(e))}).finally(()=>{if(live)setLoading(false)});
+    workspace.pull().then(data=>{if(live)setFeed(data)}).catch(e=>{if(live)setError(errorMessage(e))}).finally(()=>{if(live)setLoading(false)});
     return()=>{live=false};
   },[day]);
   const tasks=(feed?.tasks||[]).filter(t=>t.planDayId===day&&!t.cancelledAt)
@@ -95,7 +97,8 @@ export function AdvancedPlanner({day,onDayChange,onChanged,notify}:Props){
   const primaryCount=tasks.filter(t=>t.classification==="primary").length;
   function open(task:RemoteTask|null,parentTaskId:string|null=null){
     setEditing(task);
-    const next=buildDraft(task,day);
+    const next=buildDraft(task,day,defaultMinutes);
+    next.timezone=feed?.planDays.find(d=>d.id===next.targetDay)?.timezone||timezone();
     if(!task&&parentTaskId)next.parentTaskId=parentTaskId;
     if(!task&&parentTaskId)next.classification="extra";
     if(!task&&primaryCount>=3)next.classification="extra";
@@ -109,14 +112,15 @@ export function AdvancedPlanner({day,onDayChange,onChanged,notify}:Props){
     const target=index+offset;
     if(target<0||target>=draft.sessionPlan.length)return;
     const copy=[...draft.sessionPlan];[copy[index],copy[target]]=[copy[target],copy[index]];
-    modify({sessionPlan:copy,breaks:copy.slice(0,-1).map(()=>"")});
+    replaceSessions(copy);
+  }
+  function replaceSessions(next:FocusItem[]){
+    const boundaries=new Map(draft.sessionPlan.slice(0,-1).map((item,i)=>[item.id+":"+draft.sessionPlan[i+1].id,draft.breaks[i]||""]));
+    modify({sessionPlan:next,breaks:next.slice(0,-1).map((item,i)=>boundaries.get(item.id+":"+next[i+1].id)||"")});
   }
   async function persist(ops:Record<string,unknown>[]){
-    const response=await api.syncPush(ops) as {results:{status:string;message?:string;code?:string}[]};
-    if(!response.results||response.results.length!==ops.length)throw new Error("The server did not acknowledge every change.");
-    const bad=response.results.find(r=>!["accepted","duplicate"].includes(r.status));
-    if(bad)throw new Error(bad.message||"The server rejected this change ("+bad.status+"). Refresh to resolve conflicts.");
-    const updated=await refreshFeed();setFeed(updated);await onChanged();
+    await workspace.push(ops);
+    const updated=await workspace.pull();setFeed(updated);await onChanged();
   }
   async function save(event:FormEvent){
     event.preventDefault();if(loading)return;setLoading(true);setError("");
@@ -126,11 +130,12 @@ export function AdvancedPlanner({day,onDayChange,onChanged,notify}:Props){
       if(record.classification==="primary"&&known.filter(t=>t.classification==="primary").length>=3)
         throw new Error("Only three primary priorities may be planned for a day. Use Extra instead.");
       const ops:Record<string,unknown>[]=[];
-      if(!(feed?.planDays||[]).some(p=>p.id===draft.targetDay))ops.push({kind:"plan_day",record:{id:draft.targetDay,timezone:timezone()}});
+      new Intl.DateTimeFormat("en",{timeZone:draft.timezone});
+      if(!(feed?.planDays||[]).some(p=>p.id===draft.targetDay))ops.push({kind:"plan_day",record:{id:draft.targetDay,timezone:draft.timezone}});
       ops.push({kind:"task",baseRevision:editing?.recordRevision??0,record});
       await persist(ops);
       setEditing(undefined);
-      notify("Plan saved in your account.");
+      notify(workspace.remote?"Plan saved in your account.":"Plan saved in this browser.");
     }catch(e){setError(errorMessage(e))}
     finally{setLoading(false)}
   }
@@ -152,15 +157,23 @@ export function AdvancedPlanner({day,onDayChange,onChanged,notify}:Props){
         <input type="date" value={dayInput} onChange={e=>setDayInput(e.target.value)} disabled={loading}/>
       </label>
       <button type="button" className="reset-button" disabled={loading||!dayInput||dayInput===day} onClick={()=>onDayChange(dayInput)}>Show day</button>
+      <button type="button" className="reset-button" disabled={loading} onClick={async()=>{
+        if(editing!==undefined&&!window.confirm("Reload saved planning and discard this task draft?"))return;
+        setLoading(true);setError("");
+        try{setFeed(await workspace.pull());setEditing(undefined);await onChanged()}
+        catch(e){setError(errorMessage(e))}finally{setLoading(false)}
+      }}>Reload saved planning</button>
     </div>
     {error&&<p className="form-error" role="alert">{error}</p>}
-    {loading&&<p role="status" className="fineprint">Synchronizing with your account…</p>}
+    {loading&&<p role="status" className="fineprint">Loading saved planning…</p>}
     {editing===undefined?<div className="advanced-list">
       <div className="dock-heading"><span>Day's priorities</span><small>{primaryCount} of 3 primary</small></div>
+      <p className="fineprint">{tasks.length} tasks · {tasks.reduce((sum,t)=>sum+t.sessionPlan.reduce((n,s)=>n+s.activeMinutes,0),0)} planned focus minutes. Includes completed plans; cancelled plans are excluded.</p>
       {tasks.length===0?<div className="empty-state"><p>No tasks planned for this day.</p></div>:tasks.map(task=>
         <div className="advanced-task" key={task.id}>
-          <div><strong>{task.title}</strong><small>{task.plannedStart} · {task.classification} · {task.sessionPlan.length} sessions · {task.sessionPlan.reduce((sum,x)=>sum+x.activeMinutes,0)} planned min{task.completedAt?" · Completed":""}</small></div>
-          <div className="advanced-task-actions"><button type="button" onClick={()=>open(task)}>Edit</button><button type="button" onClick={()=>open(null,task.id)}>Subtask</button></div>
+          <div><strong>{task.title}</strong><small>{task.plannedStart} · {task.classification} · {task.sessionPlan.length} sessions · {task.sessionPlan.reduce((sum,x)=>sum+x.activeMinutes,0)} planned min{task.completedAt?" · Completed":""}</small>{task.parentTaskId&&<small>Subtask of {feed?.tasks.find(t=>t.id===task.parentTaskId)?.title||"retained parent task"}</small>}</div>
+          <div className="advanced-task-actions"><button type="button" onClick={()=>open(task)}>Edit</button><button type="button" onClick={()=>open(null,task.id)}>Subtask / split</button></div>
+          {!task.completedAt&&<div className="advanced-task-actions">{task.sessionPlan.map((item,index)=><button type="button" key={item.id} disabled={loading} onClick={async()=>{setLoading(true);try{await onFocus(task,item.id)}catch(e){setError(errorMessage(e))}finally{setLoading(false)}}}>Focus session {index+1}</button>)}</div>}
         </div>
       )}
       <div className="advanced-buttons">
@@ -171,23 +184,25 @@ export function AdvancedPlanner({day,onDayChange,onChanged,notify}:Props){
       <label>Task title<input required autoFocus maxLength={120} value={draft.title} onChange={e=>modify({title:e.target.value})}/></label>
       <div className="form-grid">
         <label>Planned start<input required type="time" value={draft.plannedStart} onChange={e=>modify({plannedStart:e.target.value})}/></label>
-        <label>Type<select value={draft.classification} onChange={e=>modify({classification:e.target.value as "primary"|"extra"})}><option value="primary">Primary priority</option><option value="extra">Extra task</option></select></label>
+        <label>Type<select aria-label="Task classification" value={draft.classification} onChange={e=>modify({classification:e.target.value as "primary"|"extra"})}><option value="primary">Primary priority</option><option value="extra">Extra task</option></select></label>
       </div>
       <div className="form-grid">
         <label>Plan Day<input required type="date" value={draft.targetDay} onChange={e=>modify({targetDay:e.target.value})}/></label>
-        <label>Parent task<select value={draft.parentTaskId||""} onChange={e=>modify({parentTaskId:e.target.value||null})}><option value="">None</option>{(feed?.tasks||[]).filter(t=>!t.cancelledAt&&t.id!==editing?.id&&t.planDayId===draft.targetDay).map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></label>
+        <label>Parent task<select value={draft.parentTaskId||""} onChange={e=>modify({parentTaskId:e.target.value||null})}><option value="">None</option>{(feed?.tasks||[]).filter(t=>t.id!==editing?.id&&t.planDayId===draft.targetDay).map(t=><option key={t.id} value={t.id}>{t.title}{t.cancelledAt?" (cancelled)":""}</option>)}</select></label>
       </div>
-      <label>Notes<textarea rows={2} value={draft.note} onChange={e=>modify({note:e.target.value})}/></label>
+      <label>Notes<textarea aria-label="Notes" rows={2} value={draft.note} onChange={e=>modify({note:e.target.value})}/></label>
+      <label>Plan Day timezone<input aria-label="Plan Day timezone" required value={feed?.planDays.find(d=>d.id===draft.targetDay)?.timezone||draft.timezone} disabled={!!feed?.planDays.some(d=>d.id===draft.targetDay)} onChange={e=>modify({timezone:e.target.value})}/><small>Existing days keep their original timezone.</small></label>
       <div className="dock-heading"><span>Ordered focus sessions</span><small>{draft.sessionPlan.reduce((sum,item)=>sum+(Number(item.activeMinutes)||0),0)} minutes planned</small></div>
+      <p className="fineprint">Breaks stay between adjacent sessions. Removing or separating a pair retires its break when you save; recorded history stays intact.</p>
       {draft.sessionPlan.map((item,i)=><div className="advanced-session" key={item.id}>
         <div className="session-main"><span>Session {i+1}</span><label>Minutes<input type="number" min="1" step="0.5" required value={item.activeMinutes} onChange={e=>alterSession(i,{activeMinutes:Number(e.target.value)})}/></label>
           <button type="button" disabled={i===0} onClick={()=>moveSession(i,-1)} title="Move up">↑</button><button type="button" disabled={i===draft.sessionPlan.length-1} onClick={()=>moveSession(i,1)} title="Move down">↓</button>
-          <button type="button" disabled={draft.sessionPlan.length===1} onClick={()=>modify({sessionPlan:draft.sessionPlan.filter((_,j)=>j!==i),breaks:[]})}>Remove</button>
+          <button type="button" disabled={draft.sessionPlan.length===1} onClick={()=>replaceSessions(draft.sessionPlan.filter((_,j)=>j!==i))}>Remove</button>
         </div>
-        {i<draft.sessionPlan.length-1&&<label>Break after session (minutes, optional)<input type="number" min="0" step="0.5" value={draft.breaks[i]||""} onChange={e=>modify({breaks:draft.breaks.map((v,j)=>j===i?e.target.value:v)})}/></label>}
+        {i<draft.sessionPlan.length-1&&<label>Break after session (minutes, optional)<input type="number" min="0" step="0.5" value={draft.breaks[i]||""} onChange={e=>modify({breaks:Array.from({length:draft.sessionPlan.length-1},(_,j)=>j===i?e.target.value:draft.breaks[j]||"")})}/></label>}
       </div>)}
-      <button type="button" className="reset-button" onClick={()=>modify({sessionPlan:[...draft.sessionPlan,{id:crypto.randomUUID(),activeMinutes:25}],breaks:[...draft.breaks,""]})}>+ Focus session</button>
-      <label>Working links <small>One per line: https://... or Label | https://...</small><textarea rows={3} value={draft.resources} onChange={e=>modify({resources:e.target.value})}/></label>
+      <button type="button" className="reset-button" onClick={()=>modify({sessionPlan:[...draft.sessionPlan,{id:crypto.randomUUID(),activeMinutes:defaultMinutes}],breaks:[...draft.breaks,""]})}>+ Focus session</button>
+      <label>Working links <small>One per line: https://... or Label | https://...</small><textarea aria-label="Working links" rows={3} value={draft.resources} onChange={e=>modify({resources:e.target.value})}/></label>
       <button type="submit" className="save-button" disabled={loading}>Save task</button>
       {editing&&<div className="advanced-buttons">
         {!editing.completedAt&&<button type="button" className="reset-button" disabled={loading} onClick={()=>decide(editing,"complete")}>Mark complete</button>}

@@ -1,10 +1,14 @@
 import {useEffect,useReducer,useRef,useState,type CSSProperties,type FormEvent} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import {initial,reduce,type Task,type State} from "./model";
+import {initial,reduce,type Task} from "./model";
+import {Workspace} from "./workspace";
+import {SettingsPanel} from "./SettingsPanel";
+import {FocusDetails} from "./FocusDetails";
+import {getSessionActivity} from "./connected/focus/activity-evidence.js";
+import * as api from "./connected/api.js";
 import "./space-boxes.css";
-import {toRemoteView,refreshFeed,saveRemoteTask,completeRemoteTask,currentDay,timezone,type PullFeed,type RemoteTask} from "./connected/live";
+import {toRemoteView,currentDay,timezone,safeLinks,type PullFeed,type RemoteTask} from "./connected/live";
 import {createBrowserFocus} from "./connected/focus/browser-focus.js";
-import {createServerFocusStore} from "./connected/server-focus-store.js";
 import {getDayActivityReport} from "./connected/reports/activity-reports.js";
 import {AdvancedPlanner} from "./AdvancedPlanner";
 
@@ -55,7 +59,7 @@ function Cube({number,opened,done}:{number:number;opened?:boolean;done?:boolean}
 return <span className={"cube "+(opened?"opened ":"")+(done?"finished":"")} aria-hidden="true"><span className="cube-shadow"/><span className="cube-front">{done?<Icon name="check" size={22}/>:String(number).padStart(2,"0")}</span><span className="cube-side"/><span className="cube-lid"/></span>;
 }
 function Modal({title,children,open,onOpenChange}:{title:string;children:React.ReactNode;open:boolean;onOpenChange:(v:boolean)=>void}){
-return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="modal-shade"/><Dialog.Content className="modal-panel"><div className="modal-heading"><Dialog.Title>{title}</Dialog.Title><Dialog.Close className="icon-button" aria-label="Close dialog"><Icon name="close"/></Dialog.Close></div><Dialog.Description className="sr-only">{title} for the isolated Space Boxes prototype.</Dialog.Description>{children}</Dialog.Content></Dialog.Portal></Dialog.Root>;
+return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="modal-shade"/><Dialog.Content className="modal-panel"><div className="modal-heading"><Dialog.Title>{title}</Dialog.Title><Dialog.Close className="icon-button" aria-label="Close dialog"><Icon name="close"/></Dialog.Close></div><Dialog.Description className="sr-only">{title} in your Space Boxes workspace.</Dialog.Description>{children}</Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 function Editor({task,save}:{task:Task;save:(t:Task)=>void}){
 const [title,setTitle]=useState(task.title),[time,setTime]=useState(task.start),[minutes,setMinutes]=useState(task.minutes),[links,setLinks]=useState(task.links.join("\n")),[error,setError]=useState("");
@@ -64,51 +68,10 @@ return <form onSubmit={submit} className="editor"><label>What will you focus on?
 }
 
 type AccountInfo = { email?: string; [key: string]: unknown };
-class BackendWakingError extends Error {
-  constructor(){super("Space Boxes is waking up. Please wait a moment and retry.");this.name="BackendWakingError";}
-}
-const wait = (ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
-async function apiFetch(path:string,init:RequestInit={},retryWake=true):Promise<Response>{
-  const maxAttempts=retryWake?4:1;
-  for(let attempt=0;attempt<maxAttempts;attempt++){
-    let response:Response;
-    try{
-      response=await fetch("/api/v2/"+path,{credentials:"include",cache:"no-store",...init});
-    }catch(error){
-      if(attempt===maxAttempts-1)throw new Error("Can't connect to Space Boxes right now. Your form has been kept.");
-      await wait(1800+attempt*2200);continue;
-    }
-    if(response.status!==503&&response.status!==502&&response.status!==504)return response;
-    if(attempt===maxAttempts-1)throw new BackendWakingError();
-    await wait(1800+attempt*2200);
-  }
-  throw new BackendWakingError();
-}
 async function accountRequest(path:string,data?:Record<string,string>){
-  let token="";
-  if(data){
-    const csrf=await apiFetch("csrf");
-    if(!csrf.ok)throw new Error("Unable to establish a protected session. Retry after the server wakes.");
-    const csrfData=await csrf.json() as {csrfToken?:string};
-    token=csrfData.csrfToken||"";
-    if(!token)throw new Error("The server did not provide a valid CSRF token.");
-  }
-  // A POST is never automatically retried: registration, deletion and focus changes
-  // must not be duplicated after an ambiguous network outcome.
-  const response=await apiFetch(path,data?{
-    method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":token},
-    body:JSON.stringify(data)
-  }:{},!data);
-  const contentType=response.headers.get("content-type")||"";
-  const value:Record<string,unknown>=contentType.includes("json")?await response.json():{};
-  if(!response.ok){
-    const error=value.error;
-    const detail=typeof error==="string"?error:error&&typeof error==="object"&&typeof (error as Record<string,unknown>).message==="string"?(error as Record<string,string>).message:null;
-    throw new Error(detail||"Request failed ("+response.status+").");
-  }
-  return value;
+  return await api.request(data?"POST":"GET","/api/v2/"+path,data) as Record<string,unknown>;
 }
-function ConnectedAccount({notify,onAuthenticated,onSignedOut}:{notify:(message:string)=>void;onAuthenticated:()=>Promise<void>;onSignedOut:()=>void}){
+function ConnectedAccount({notify,onAuthenticated,onSignedOut,onImportLocal,verificationMessage}:{verificationMessage:string;onImportLocal:()=>Promise<void>;notify:(message:string)=>void;onAuthenticated:()=>Promise<void>;onSignedOut:()=>void}){
   type AccountMode = "login"|"register"|"recover"|"recover-confirm"|"verify-pending";
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -121,6 +84,7 @@ function ConnectedAccount({notify,onAuthenticated,onSignedOut}:{notify:(message:
   const [info,setInfo]=useState("");
   const [deleteOpen,setDeleteOpen]=useState(false);
   const [deletePassword,setDeletePassword]=useState("");
+  useEffect(()=>{if(verificationMessage){setMode("login");setInfo(verificationMessage);setPassword("");setError("")}},[verificationMessage]);
 
   useEffect(()=>{
     accountRequest("accounts/me").then(value=>setAccount((value.account||value.user||value) as AccountInfo)).catch(()=>{});
@@ -134,7 +98,7 @@ function ConnectedAccount({notify,onAuthenticated,onSignedOut}:{notify:(message:
       if(mode==="recover"){
         await accountRequest("accounts/recovery/request",{email});
         setMode("recover-confirm");
-        setInfo("If an account exists, an email with a recovery code has been sent.");
+        setInfo("If the account is eligible and email delivery is available, a recovery code will arrive.");
         return;
       }
       if(mode==="recover-confirm"){
@@ -204,7 +168,11 @@ function ConnectedAccount({notify,onAuthenticated,onSignedOut}:{notify:(message:
     return <div className="connected-account">
       <p>Signed in{account.email?" as "+account.email:""}.</p>
       <p className="fineprint">Your plans, focus and account data stay in your Space Boxes workspace.</p>
-      <a className="existing-app" href="/api/v2/account/export" download>Export my data <Icon name="arrow" size={18}/></a>
+      <button className="save-button" disabled={working} onClick={async()=>{setWorking(true);setError("");try{const result=await api.request("GET","/api/v2/account/export");const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="space-boxes-export.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){setError(e instanceof Error?e.message:"Export failed.")}finally{setWorking(false)}}}>Export my data <Icon name="arrow" size={18}/></button>
+      <p className="fineprint">Import this browser's local plans and ended sessions explicitly. Local data stays intact; conflicting changes require resolution.</p>
+      <button className="reset-button" disabled={working} onClick={async()=>{setWorking(true);setError("");try{await onImportLocal();setInfo("Local data import confirmed.")}catch(e){setError(e instanceof Error?e.message:"Import failed; local data is preserved.")}finally{setWorking(false)}}}>Import / sync local data</button>
+      {info&&<p role="status">{info}</p>}
+      <button className="reset-button" disabled={working} onClick={async()=>{setWorking(true);setError("");try{await onAuthenticated()}catch(e){setError(e instanceof Error?e.message:"Account workspace unavailable.")}finally{setWorking(false)}}}>Load account workspace</button>
       <div className="account-actions">
         <button type="button" disabled={working} className="reset-button" onClick={()=>logout(false)}>Sign out</button>
         <button type="button" disabled={working} className="reset-button" onClick={()=>logout(true)}>Sign out all devices</button>
@@ -246,128 +214,157 @@ function ConnectedAccount({notify,onAuthenticated,onSignedOut}:{notify:(message:
   </div>;
 }
 
-const STORAGE="space-boxes-review-prototype-1";
-function validState(v:unknown):v is State {
-const s=v as State;return !!s&&Array.isArray(s.tasks)&&s.tasks.length===3&&s.tasks.every((t,i)=>t.id===i+1&&typeof t.title==="string"&&typeof t.start==="string"&&typeof t.done==="boolean"&&Array.isArray(t.links)&&t.links.every(l=>typeof l==="string"&&/^https?:\/\//.test(l))&&Number.isFinite(t.minutes)&&t.minutes>0)&&Array.isArray(s.history)&&s.history.every(h=>typeof h.title==="string"&&Number.isFinite(h.seconds)&&Number.isFinite(h.at))&&(!s.session||(s.tasks.some(t=>t.id===s.session!.taskId)&&Number.isFinite(s.session.elapsed)&&Number.isFinite(s.session.lastTick)&&Number.isFinite(s.session.duration)));
-}
 export function SpaceBoxes(){
 const [state,dispatch]=useReducer(reduce,initial);
 const [selected,setSelected]=useState(1),[panel,setPanel]=useState<string|null>(null),[hydrated,setHydrated]=useState(false),[quiet,setQuiet]=useState(false),[message,setMessage]=useState(""),[celebration,setCelebration]=useState(false);
+const [defaultMinutes,setDefaultMinutes]=useState(25);
 const scene=useRef<HTMLDivElement>(null);
 const [connected,setConnected]=useState(false);
 const [remoteFeed,setRemoteFeed]=useState<PullFeed|null>(null);
 const remoteSlots=useRef<(RemoteTask|null)[]>([null,null,null]);
 const remoteFocus=useRef<any>(null);
+const workspace=useRef<Workspace|null>(null);
 const [working,setWorking]=useState(false);
+const busy=useRef(false);
 const [focusReady,setFocusReady]=useState(false);
+const [focusState,setFocusState]=useState<any>(null);
+const [focusError,setFocusError]=useState("");
 const [planDay,setPlanDay]=useState(currentDay());
-const s=state.session,t=state.tasks.find(t=>t.id===(s?.taskId||selected))!,completed=state.tasks.filter(t=>t.done).length;
-const insight=(()=>{
-  if(!connected||!remoteFeed)return null;
-  try {
-    return getDayActivityReport({
-      ownershipScopeId:remoteFeed.ownershipScopeId,
-      sessions:remoteFeed.sessions||[],
-      evidence:remoteFeed.evidence||[],
-      reconciliations:remoteFeed.decisions||[],
-    },planDay);
-  } catch {return null}
-})();
+const [itemId,setItemId]=useState("");
+const [verificationMessage,setVerificationMessage]=useState("");
+const [authorityGeneration,setAuthorityGeneration]=useState(0);
+const feedSequence=useRef(0);
+const reservation=focusState?.reservation;
+const session=focusState?.sessions.find((session:any)=>session.id===reservation?.sessionId);
+const owns=!!reservation&&reservation.controllerId===remoteFocus.current?.contextId;
+const activeSlot=session?remoteSlots.current.findIndex(task=>task?.id===session.taskId):-1;
+useEffect(()=>{if(session&&activeSlot>=0)setSelected(activeSlot+1)},[session?.id,activeSlot]);
+const activity=session?getSessionActivity(focusState,session.id):null;
+const selectedSlot=state.tasks.find(task=>task.id===selected)||state.tasks[0];
+const chosenItem=remoteSlots.current[selected-1]?.sessionPlan.find(item=>item.id===itemId);
+const selectedTask={...selectedSlot,minutes:chosenItem?.activeMinutes||(remoteSlots.current[selected-1]?selectedSlot.minutes:defaultMinutes)};
+const t:Task=session?{id:activeSlot>=0?activeSlot+1:4,title:session.startingSnapshot.title,start:session.startingSnapshot.plannedStart||"",links:safeLinks(remoteFeed?.tasks.find(task=>task.id===session.taskId)?.resources),done:false,minutes:session.targetMs/60000}:selectedTask;
+const s=session?{taskId:t.id,title:t.title,duration:session.targetMs/1000,elapsed:(activity?.confirmedActiveMs||0)/1000,paused:reservation.state==="paused"}:null;
+const completed=state.tasks.filter(task=>task.done).length;
+const insight=focusState?getDayActivityReport(focusState,planDay):null;
 const minutesLabel=(value:number)=>Number.isFinite(value)?(value/60000).toFixed(1)+"m":"—";
-useEffect(()=>{try{const raw=sessionStorage.getItem(STORAGE);if(raw){const data:unknown=JSON.parse(raw);if(validState(data)){data.tasks.forEach(task=>dispatch({type:"edit",task}));/* Restore through state action is intentionally avoided: demo reload starts safely paused via fresh review. */}}}catch{}setHydrated(true)},[]);
-useEffect(()=>{if(hydrated&&!connected)try{sessionStorage.setItem(STORAGE,JSON.stringify({...state,session:null,history:[]}))}catch{}},[state,hydrated,connected]);
-useEffect(()=>{if(!s||s.paused)return;const id=setInterval(()=>dispatch({type:"tick",now:Date.now()}),250);return()=>clearInterval(id)},[s?.taskId,s?.paused]);
-useEffect(()=>{if(!message)return;const id=setTimeout(()=>setMessage(""),4000);return()=>clearTimeout(id)},[message]);
-useEffect(()=>{if(!celebration)return;const id=setTimeout(()=>setCelebration(false),1800);return()=>clearTimeout(id)},[celebration]);
 async function loadRemote(day=planDay){
-  const feed=await refreshFeed();
-  const remote=toRemoteView(feed,day);
-  remoteSlots.current=remote.slots;
-  setRemoteFeed(feed);
+  if(!workspace.current)return;
+  const sequence=++feedSequence.current;
+  const feed=await workspace.current.pull();
+  if(sequence!==feedSequence.current)return;
+  const remote=toRemoteView(feed,day);remoteSlots.current=remote.slots;setRemoteFeed(feed);
   dispatch({type:"hydrate",tasks:remote.tasks,history:remote.history});
-  setConnected(true);
 }
-useEffect(()=>{accountRequest("accounts/me").then(()=>loadRemote()).catch(()=>{});},[]);
 useEffect(()=>{
-  const url=new URL(window.location.href);
-  const token=url.searchParams.get("verify");
-  if(!token)return;
-  url.searchParams.delete("verify");
-  window.history.replaceState(null,"",url.pathname+url.search+url.hash);
-  setPanel("account");
-  accountRequest("accounts/verify",{token}).then(()=>{
-    setMessage("Email verified. Please sign in.");
-  }).catch(error=>{
-    setMessage(error instanceof Error?error.message:"The verification link was invalid or expired.");
-  });
+  let cancelled=false;const store=new Workspace();
+  (async()=>{
+    await store.init();if(cancelled){store.close();return;}
+    workspace.current=store;
+    try{await accountRequest("accounts/me");const local=await store.focusStore().loadFocus();if(!local.reservation)store.remote=true;else setMessage("Signed in. End your local reserved session before loading the account workspace.");}catch(e){if((e as any)?.status!==401)setMessage("Account status unavailable. Local workspace loaded; reconnect explicitly when online.");}
+    if(cancelled)return;
+    setConnected(store.remote);await loadRemote();if(!cancelled)setHydrated(true);
+    try{setQuiet(localStorage.getItem("space-boxes-quiet-motion")==="true");const minutes=Number(localStorage.getItem("space-boxes-default-minutes"));if([5,15,25,45,60,90].includes(minutes))setDefaultMinutes(minutes)}catch{setMessage("Preferences could not be loaded from browser storage.")}
+  })().catch(e=>{if(!cancelled)setFocusError(e instanceof Error?e.message:"Browser storage unavailable. Nothing has been saved.")});
+  return()=>{cancelled=true;store.close();if(workspace.current===store)workspace.current=null;};
+},[]);
+useEffect(()=>{
+  function verify(){
+    const url=new URL(window.location.href);
+    const token=new URLSearchParams(url.hash.slice(1)).get("verify")||url.searchParams.get("verify");
+    if(!token)return;
+    url.searchParams.delete("verify");url.hash="";window.history.replaceState(null,"",url.pathname+url.search);
+    setPanel("account");
+    accountRequest("accounts/verify",{token}).then(()=>setVerificationMessage("Email verified. Please sign in.")).catch(e=>setVerificationMessage(e instanceof Error?e.message:"Verification failed."));
+  }
+  verify();window.addEventListener("hashchange",verify);
+  return()=>window.removeEventListener("hashchange",verify);
 },[]);
 
 useEffect(()=>{
-  if(!connected){setFocusReady(false);return}
-  const controller:any=(createBrowserFocus as any)(createServerFocusStore(),{
-    onError:(err:unknown)=>setMessage(err instanceof Error?err.message:"Connected focus needs a refresh."),
-    onState:()=>{},
+  if(!hydrated||!workspace.current)return;
+  let stopped=false;
+  setFocusReady(false);setFocusState(null);setFocusError("");
+  const controller:any=(createBrowserFocus as any)(workspace.current.focusStore(),{
+    onState:(next:any)=>{if(!stopped)setFocusState(next)},
+    onError:(e:unknown)=>{if(!stopped){controller.stop();setFocusReady(false);setFocusError(e instanceof Error?e.message:"Focus changes were not confirmed. Refresh saved focus before retrying.")}},
   });
   remoteFocus.current=controller;
-  controller.load().then((next:any)=>{setFocusReady(true);controller.watch();
-    if(next?.reservation&&next.reservation.controllerId!==controller.contextId)
-      setMessage("Another session is already reserved on your account. End it in the connected workspace first.");
-  }).catch(()=>setMessage("Could not load connected focus. Retry when the server wakes."));
-  return ()=>{controller.stop();if(remoteFocus.current===controller)remoteFocus.current=null};
-},[connected]);
+  controller.load().then(()=>{if(!stopped){setFocusReady(true);controller.watch()}}).catch((e:any)=>{if(!stopped)setFocusError(e.message)});
+  const poll=setInterval(()=>{
+    if(stopped||busy.current)return;
+    // Observers only read. The accepted controller alone records evidence.
+    controller.load().catch((e:any)=>{if(!stopped){controller.stop();setFocusReady(false);setFocusError(e.message)}});
+    loadRemote().catch((e:any)=>{if(!stopped)setFocusError("Plan synchronization failed: "+e.message)});
+  },5000);
+  return()=>{stopped=true;clearInterval(poll);controller.stop();if(remoteFocus.current===controller)remoteFocus.current=null;};
+},[connected,hydrated,planDay,authorityGeneration]);
+useEffect(()=>{if(!celebration)return;const id=setTimeout(()=>setCelebration(false),1800);return()=>clearTimeout(id)},[celebration]);
+async function act(run:()=>Promise<void>){
+  if(busy.current)return;busy.current=true;setWorking(true);
+  try{await run();setFocusError("");setFocusReady(true);remoteFocus.current?.watch();}
+  catch(e){remoteFocus.current?.stop();setFocusReady(false);setFocusError(e instanceof Error?e.message:"The operation was not confirmed. Refresh before retrying.");throw e;}
+  finally{busy.current=false;setWorking(false)}
+}
+async function refresh(){try{await act(async()=>{await remoteFocus.current?.load();await loadRemote()})}catch{}}
 async function saveTask(task:Task){
-  if(!connected){dispatch({type:"edit",task});setPanel(null);setMessage("Your box is ready.");return}
-  if(!remoteFeed){setMessage("Server data not loaded. Please retry.");return}
-  setWorking(true);
+  if(!workspace.current||!remoteFeed||busy.current)return;
+  busy.current=true;setWorking(true);
   try{
-    await saveRemoteTask(planDay,remoteSlots.current[task.id-1],task,remoteFeed);
-    await loadRemote(planDay);setPanel(null);setMessage("Your connected box is saved.");
-  }catch(e){setMessage(e instanceof Error?e.message:"Save failed. Your form remains open.")}
-  finally{setWorking(false)}
+    const previous=remoteSlots.current[task.id-1];
+    const record={...previous,id:previous?.id||crypto.randomUUID(),planDayId:planDay,title:task.title.trim(),plannedStart:task.start,classification:"primary",sessionPlan:previous?.sessionPlan?.length?previous.sessionPlan.map((item,i)=>i===0?{...item,activeMinutes:task.minutes}:item):[{id:crypto.randomUUID(),activeMinutes:task.minutes}],resources:task.links.map(url=>({url})),cancelledAt:null,parentTaskId:previous?.parentTaskId||null};
+    await workspace.current.push([{kind:"plan_day",record:{id:planDay,timezone:remoteFeed.planDays.find(day=>day.id===planDay)?.timezone||timezone()}},{kind:"task",baseRevision:previous?.recordRevision||0,record}]);
+    await loadRemote();setPanel(null);setMessage(connected?"Task saved in your account.":"Task saved in this browser.");
+  }catch(e){setMessage(e instanceof Error?e.message:"Save failed. Your draft is kept.")}
+  finally{busy.current=false;setWorking(false)}
+}
+async function focusTask(task:RemoteTask,plannedItemId:string){
+  if(!focusReady||!remoteFocus.current)throw new Error("Refresh saved focus before starting.");
+  await act(async()=>{
+    await remoteFocus.current.start({taskId:task.id,plannedItemId,expectedPlanningRevision:remoteFeed?.scopeRevision,timezone:remoteFeed?.planDays.find(day=>day.id===task.planDayId)?.timezone||timezone()});
+    setPanel(null);
+  });
 }
 async function startFocus(){
-  if(!connected){dispatch({type:"start",id:t.id,now:Date.now()});return}
-  const remote=remoteSlots.current[t.id-1];
-  if(!remote){setPanel("edit");return}
-  setWorking(true);
-  try{
-    if(!remoteFocus.current)throw new Error("Connected focus is loading. Retry shortly.");
-    await remoteFocus.current.start({taskId:remote.id,plannedItemId:remote.sessionPlan[0].id,timezone:timezone()});
-    dispatch({type:"start",id:t.id,now:Date.now()});
-  }catch(e){setMessage(e instanceof Error?e.message:"Start rejected by server.")}
-  finally{setWorking(false)}
+  const remote=remoteSlots.current[t.id-1];if(!remote){setPanel("edit");return;}
+  try{await focusTask(remote,remote.sessionPlan.find(item=>item.id===itemId)?.id||remote.sessionPlan[0].id)}catch{}
 }
-async function pauseOrResume(){
-  if(!s)return;
-  if(!connected){dispatch({type:s.paused?"resume":"pause",now:Date.now()});return}
-  setWorking(true);
-  try{
-    if(!remoteFocus.current)throw new Error("Connected focus unavailable.");
-    if(s.paused)await remoteFocus.current.resume();else await remoteFocus.current.pause();
-    dispatch({type:s.paused?"resume":"pause",now:Date.now()});
-  }catch(e){setMessage(e instanceof Error?e.message:"Focus update rejected.")}
-  finally{setWorking(false)}
-}
+async function pauseOrResume(){if(!s)return;try{await act(async()=>{if(s.paused)await remoteFocus.current.resume();else await remoteFocus.current.pause()})}catch{}}
 async function endFocus(complete:boolean){
-  if(!connected){end(complete);return}
-  setWorking(true);
-  try{
-    if(!remoteFocus.current)throw new Error("Connected focus unavailable.");
+  if(!session||!workspace.current)return;
+  try{await act(async()=>{
     await remoteFocus.current.end();
-    dispatch({type:"end",now:Date.now(),complete:false});
-    if(complete){const remote=remoteSlots.current[s?.taskId? s.taskId-1:0];
-      if(remote)await completeRemoteTask(remote)}
-    await loadRemote();
-    if(complete)setCelebration(true);
-    setMessage(complete?"Focus and task completion confirmed.":"Session saved on your account.");
-  }catch(e){setMessage(e instanceof Error?e.message:"Could not confirm operation. Refresh account status.")}
-  finally{setWorking(false)}
+    if(complete){
+      const feed=await workspace.current!.pull();const task=feed.tasks.find(task=>task.id===session.taskId);
+      if(!task)throw new Error("Session saved, but task completion could not be confirmed.");
+      await workspace.current!.push([{kind:"task",baseRevision:task.recordRevision||0,record:{...task,completedAt:Date.now()}}]);
+    }
+    await loadRemote();if(complete)setCelebration(true);setMessage(complete?"Session and task completion confirmed.":"Session saved.");
+  })}catch{}
 }
-async function chooseDay(day:string){if(state.session){setMessage("Finish the current session before switching day.");return;}setPlanDay(day);if(connected){try{await loadRemote(day)}catch(e){setMessage(e instanceof Error?e.message:"Could not load selected day.")}}}
+async function chooseDay(day:string){
+  if(reservation){setMessage("End the reserved session before changing Plan Day.");return;}
+  if(!day)return;try{await loadRemote(day);setPlanDay(day)}catch(e){setMessage(e instanceof Error?e.message:"Could not load day.")}
+}
+async function connectAccount(){
+  const store=workspace.current;if(!store)throw new Error("Workspace unavailable.");
+  if(!store.remote&&(await store.focusStore().loadFocus()).reservation)
+    throw new Error("Signed in. End the local session before connecting; local data is preserved.");
+  remoteFocus.current?.stop();store.remote=true;
+  setHydrated(false);setFocusReady(false);setFocusState(null);setRemoteFeed(null);
+  remoteSlots.current=[null,null,null];dispatch({type:"reset"});
+  setConnected(true);setAuthorityGeneration(value=>value+1);
+  try{await loadRemote();setHydrated(true)}
+  catch(e){setFocusError(e instanceof Error?e.message:"Account synchronization failed.");throw e}
+}
+function signOutWorkspace(){
+  remoteFocus.current?.stop();if(workspace.current)workspace.current.remote=false;
+  setConnected(false);setHydrated(false);setRemoteFeed(null);remoteSlots.current=[null,null,null];setFocusState(null);dispatch({type:"reset"});
+  loadRemote().then(()=>setHydrated(true)).catch(e=>setFocusError(e.message));
+}
 const remaining=Math.max(0,(s?.duration||t.minutes*60)-(s?.elapsed||0)),clock=Math.ceil(remaining),mm=String(Math.floor(clock/60)).padStart(2,"0"),ss=String(clock%60).padStart(2,"0");
 const progress=s?Math.min(1,s.elapsed/s.duration):0;
-function choose(id:number){if(s&&s.taskId!==id){setMessage("One box at a time. End the current session before opening another.");return}setSelected(id)}
-function end(complete:boolean){dispatch({type:"end",now:Date.now(),complete});if(complete){setCelebration(true);setMessage("One less thing on your mind. Beautiful work.")}else setMessage("Session saved. Your task is ready for another round.")}
+function choose(id:number){if(s&&s.taskId!==id){setMessage("One box at a time. End the current session before opening another.");return}setSelected(id);setItemId("")}
 const locked=!!s;
 return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
 <a className="skip-link" href="#focus-controls">Skip to focus controls</a>
@@ -382,32 +379,32 @@ return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
 <div className="scene-caption"><span className="caption-line"/>{s?"The rest can wait.":"Choose a box. Give it your attention."}<span className="caption-line"/></div>
 </div>
 <aside className="focus-panel" id="focus-controls" aria-label="Focus session">
-<div className="task-heading"><span className="tiny-label">{t.done?"COMPLETED":s?(s.paused?"TAKE A BREATH":"YOUR FOCUS"):"YOUR NEXT FOCUS"}</span><span className="task-index">0{t.id} / 03</span></div>
-<h2>{t.title}</h2>
+<div className="task-heading"><span className="tiny-label">{t.done?"COMPLETED":s?(s.paused?"TAKE A BREATH":"YOUR FOCUS"):"YOUR NEXT FOCUS"}</span><span className="task-index">{t.id===4?"EXTRA":"0"+t.id+" / 03"}</span></div>
+<h2>{t.title}</h2>{t.id===4&&<p className="fineprint">Extra task / subtask in focus</p>}
 <div className="planned-time">{s?"One box open":t.done?"You made room for what matters.":"Planned for "+t.start}{!s&&!t.done&&<button className="edit-inline" aria-label="Edit selected task" onClick={()=>setPanel("edit")}><Icon name="edit" size={15}/></button>}</div>
+{!s&&remoteSlots.current[t.id-1]&&<label className="session-picker">Planned session<select aria-label="Planned session" value={itemId} onChange={e=>setItemId(e.target.value)}><option value="">First planned session</option>{remoteSlots.current[t.id-1]!.sessionPlan.map((item,index)=><option key={item.id} value={item.id}>Session {index+1} · {item.activeMinutes} min</option>)}</select></label>}
 <div className="timer-wrap" style={{"--progress":progress*100+"%"} as CSSProperties}><div className="timer" role="timer" aria-label={mm+" minutes "+ss+" seconds remaining"}><span>{mm}</span><b>:</b><span>{ss}</span></div><div className="timer-track"><span style={{transform:"scaleX("+progress+")"}}/></div><p className="timer-caption">{s?(remaining===0?"Your time is up. End or complete when ready.":s.paused?"Paused. Your box stays reserved.":"A small promise to your attention."):t.minutes+" minutes of undivided attention"}</p></div>
-{!s?<button className="start-button" disabled={t.done||!hydrated||working||(connected&&!focusReady&&!!remoteSlots.current[t.id-1])} onClick={startFocus}><Icon name={t.done?"check":"play"} size={19}/>{t.done?"Task complete":connected&&!remoteSlots.current[t.id-1]?"Set up box":"Start focus"}<span className="button-orbit">↗</span></button>:<><button className="pause-button" onClick={pauseOrResume}><Icon name={s.paused?"play":"pause"} size={18}/>{s.paused?"Resume focus":"Pause focus"}</button><div className="session-actions"><button className="end-button" onClick={()=>endFocus(false)}>End session</button><button className="complete-button" onClick={()=>endFocus(true)}><Icon name="check" size={15}/>Complete task</button></div></>}
+{!s?<button className="start-button" disabled={t.done||!hydrated||working||!focusReady} onClick={startFocus}><Icon name={t.done?"check":"play"} size={19}/>{t.done?"Task complete":!remoteSlots.current[t.id-1]?"Set up box":"Start focus"}<span className="button-orbit" aria-hidden="true">↗</span></button>:<><button className="pause-button" disabled={working||!owns||!focusReady} onClick={pauseOrResume}><Icon name={s.paused?"play":"pause"} size={18}/>{s.paused?"Resume focus":"Pause focus"}</button><div className="session-actions"><button className="end-button" disabled={working||!owns||!focusReady} onClick={()=>endFocus(false)}>End session</button><button className="complete-button" disabled={working||!owns||!focusReady} onClick={()=>endFocus(true)}><Icon name="check" size={15}/>Complete task</button></div></>}
 {t.links.length>0&&<div className="working-links">{t.links.map((l,i)=><a href={l} key={l+i} target="_blank" rel="noopener noreferrer"><Icon name="link" size={14}/>{new URL(l).hostname}<Icon name="arrow" size={13}/></a>)}</div>}
 </aside>
 <div className="daily-progress"><div className="progress-markers">{state.tasks.map(t=><span className={t.done?"filled":""} key={t.id}>{t.done?<Icon name="check" size={10}/>:null}</span>)}</div><span>{completed} of 3 priorities complete</span></div>
 </section>
 <section className="task-dock" aria-label="Your three daily priorities"><div className="dock-heading"><span>{planDay===currentDay()?"Today's space":"Space for "+planDay}</span><small>Only what matters.</small></div><div className="task-list">{state.tasks.map(task=><button key={task.id} className={"task-row "+(t.id===task.id?"selected ":"")+(task.done?"done":"")} onClick={()=>choose(task.id)} aria-pressed={t.id===task.id}><span className="row-number">{task.done?<Icon name="check" size={17}/>:"0"+task.id}</span><span className="row-copy"><strong>{task.title}</strong><small>{task.done?"Completed":s?.taskId===task.id?(s.paused?"Paused":"Focusing now"):task.start+" · "+task.minutes+" min"}</small></span><span className="row-arrow">{s&&s.taskId!==task.id?"○":"↗"}</span></button>)}</div><button className="plan-button" disabled={locked} onClick={()=>setPanel("edit")}><Icon name="edit" size={16}/><span>Edit selected task</span></button></section>
-<footer><span>Make space for what matters.</span><span>{connected?"Account sync active":"Local tasks · Sign in for sync"}</span></footer>
+<footer><span>Make space for what matters.</span><span>{connected?"Account workspace":"Local tasks · Sign in for sync"}</span></footer>
+<section className="sync-status" aria-label="Saved focus status"><p role="status">{!hydrated?"Loading saved workspace…":reservation?(reservation.state==="paused"?"Paused":"Running")+(owns?" · controlled here":" · reserved in another tab or device"):"No active focus reservation."}</p>
+{focusError&&<p role="alert" className="form-error">{focusError}</p>}
+<button type="button" className="reset-button" disabled={working||!hydrated} onClick={refresh}>Refresh saved state</button>
+{reservation&&!owns&&<button type="button" className="save-button" disabled={working||!focusReady} onClick={async()=>{if(window.confirm("Take control of this reserved session here? The previous device will lose control. Unobserved time remains uncertain.")){try{await act(async()=>{await remoteFocus.current.recover({confirmed:true})})}catch{}}}}>Recover control here</button>}
+</section>
 <div role="status" aria-live="polite" className={"toast "+(message?"visible":"")}>{message}</div>
 <Modal title="Plan your space" open={panel==="planner"} onOpenChange={o=>!o&&setPanel(null)}>
-{connected?<AdvancedPlanner day={planDay} onDayChange={chooseDay} onChanged={async()=>{await loadRemote(planDay)}} notify={setMessage}/>:
-<>
-<p className="fineprint">Choose up to three primary priorities. Create your free account for multi-session plans, extras, breaks, subtasks and syncing.</p>
-<div className="editor"><label>Plan Day<input type="date" value={planDay} onChange={e=>chooseDay(e.target.value)}/></label></div>
-<div className="planner-dock">{state.tasks.map(task=><button className={"task-row "+(selected===task.id?"selected":"")} type="button" key={task.id} onClick={()=>{choose(task.id);setPanel("edit")}}><span className="row-number">0{task.id}</span><span className="row-copy"><strong>{task.title}</strong><small>{task.start} · {task.minutes} minutes · {task.links.length} resources</small></span><Icon name="edit" size={16}/></button>)}</div>
-<button className="save-button" type="button" onClick={()=>setPanel("account")}>Save and synchronize your plans</button>
-</>}
+{hydrated&&workspace.current?<AdvancedPlanner defaultMinutes={defaultMinutes} day={planDay} workspace={workspace.current} onFocus={focusTask} onDayChange={chooseDay} onChanged={async()=>{await loadRemote(planDay)}} notify={setMessage}/>:<p>Loading saved plans…</p>}
 </Modal>
 <Modal title="Shape your next focus" open={panel==="edit"} onOpenChange={o=>!o&&setPanel(null)}><Editor key={t.id} task={t} save={saveTask}/></Modal>
-<Modal title="Your focus history" open={panel==="history"} onOpenChange={o=>!o&&setPanel(null)}><p className="fineprint">{connected?"History is loaded from your account.":"Local sessions from this visit."}</p>{state.history.length===0?<div className="empty-state"><Icon name="history" size={38}/><h3>A fresh stretch of time.</h3><p>Finish a session and your focus will appear here.</p></div>:<ul className="history-list">{state.history.map((h,i)=><li key={h.at+"-"+i}><span><strong>{h.title}</strong><small>{h.completed?"Task completed":"Session ended"}</small></span><b>{Math.floor(h.seconds/60)}m {h.seconds%60}s</b></li>)}</ul>}</Modal>
+<Modal title="Your focus history" open={panel==="history"} onOpenChange={o=>!o&&setPanel(null)}><FocusDetails state={focusState} controller={remoteFocus.current} disabled={working||!focusReady} onReconcile={async(input)=>{await act(async()=>{await remoteFocus.current.reconcile(input);await loadRemote()})}}/></Modal>
 <Modal title="Your focus insights" open={panel==="insights"} onOpenChange={o=>!o&&setPanel(null)}>
   <p className="fineprint">Evidence-based activity for Plan Day {planDay}. Verified focus is counted from actual recorded evidence, not simply the time the timer was open.</p>
-  {connected&&insight?<><div className="insight-metrics">
+  {insight?<><div className="insight-metrics">
     <div><strong>{insight.sessionCount}</strong><span>Focus sessions</span></div>
     <div><strong>{minutesLabel(insight.activeFocusMs)}</strong><span>Confirmed active focus</span></div>
     <div><strong>{minutesLabel(insight.plannedFocusMs)}</strong><span>Planned focus</span></div>
@@ -429,8 +426,7 @@ return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
     <div><strong>{completed}/3</strong><span>Today's completed priorities</span></div>
   </div>}
 </Modal>
-<Modal title="A space that suits you" open={panel==="settings"} onOpenChange={o=>!o&&setPanel(null)}><div className="setting-row"><span><strong>Quiet motion</strong><small>Keep the scene still. System reduced-motion is always respected.</small></span><input aria-label="Quiet motion" type="checkbox" checked={quiet} onChange={e=>setQuiet(e.target.checked)}/></div><p className="fineprint">Local plans stay in this browser tab. When signed in, the three primary tasks and focus commands use the connected Django account.</p><button className="reset-button" onClick={()=>setPanel("reset")}>Reset demo</button></Modal>
-<Modal title="Reset your demo space?" open={panel==="reset"} onOpenChange={o=>!o&&setPanel(null)}><p>This clears this prototype's tasks and session history. Your real Space Boxes data is unaffected.</p><button className="reset-button" onClick={()=>{dispatch({type:"reset"});setSelected(1);setPanel(null);setMessage("A fresh space, ready for you.")}}>Reset demo</button></Modal>
-<Modal title="Space Boxes account" open={panel==="account"} onOpenChange={o=>!o&&setPanel(null)}><ConnectedAccount notify={setMessage} onAuthenticated={loadRemote} onSignedOut={()=>{setConnected(false);setRemoteFeed(null);remoteSlots.current=[null,null,null];dispatch({type:"reset"})}}/></Modal>
+<Modal title="A space that suits you" open={panel==="settings"} onOpenChange={o=>!o&&setPanel(null)}><SettingsPanel defaultMinutes={defaultMinutes} onDefaultMinutes={value=>{try{localStorage.setItem("space-boxes-default-minutes",String(value));setDefaultMinutes(value)}catch{setMessage("Session default could not be saved.")}}} workspace={workspace.current} quiet={quiet} onQuiet={value=>{try{localStorage.setItem("space-boxes-quiet-motion",String(value));setQuiet(value)}catch{setMessage("Motion preference could not be saved.")}}}/></Modal>
+<Modal title="Space Boxes account" open={panel==="account"} onOpenChange={o=>!o&&setPanel(null)}><ConnectedAccount verificationMessage={verificationMessage} notify={setMessage} onImportLocal={async()=>{if(!workspace.current)throw new Error("Workspace unavailable.");await workspace.current.importLocal();await loadRemote()}} onAuthenticated={connectAccount} onSignedOut={signOutWorkspace}/></Modal>
 </main>
 }
