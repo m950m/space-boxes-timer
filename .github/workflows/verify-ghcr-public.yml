@@ -1,0 +1,19 @@
+name: Verify anonymous GHCR pull
+on:
+  push:
+    branches: [deploy/snapdeploy-ghcr]
+    paths: [.github/workflows/verify-ghcr-public.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  anonymous-pull:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify image anonymously without GitHub credentials
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -fsSL 'https://ghcr.io/token?scope=repository:m950m/space-boxes-timer:pull&service=ghcr.io' | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+          STATUS=$(curl -sSL -o /tmp/manifest.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' 'https://ghcr.io/v2/m950m/space-boxes-timer/manifests/snapdeploy-candidate')
+          echo "Anonymous image manifest response: $STATUS"
+          test "$STATUS" = 200

@@ -126,7 +126,10 @@ CSRF_COOKIE_SECURE = not DEBUG
 CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_SSL_REDIRECT = not DEBUG
+# At a TLS-terminating ingress which does not forward a trusted scheme header,
+# disable only the redundant internal redirect; leave Secure cookies enabled.
+# Requires that the container is reachable exclusively through HTTPS ingress.
+SECURE_SSL_REDIRECT = not DEBUG and env_bool("DJANGO_SSL_REDIRECT", True)
 SECURE_HSTS_SECONDS = 0 if DEBUG else 3600
 # Subdomains/preload require a separate domain-wide operational decision.
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False
