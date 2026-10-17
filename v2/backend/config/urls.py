@@ -16,6 +16,7 @@ def serve_asset(request, path, directory):
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="index.html")),
+    path("classic", TemplateView.as_view(template_name="classic.html")),
     path("js/<path:path>", serve_asset, {"directory": "js"}),
     path("css/<path:path>", serve_asset, {"directory": "css"}),
     path("admin/", admin.site.urls),
