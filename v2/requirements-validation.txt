@@ -1,3 +1,4 @@
 # Optional validation tools only; never installed in the runtime image.
 openapi-spec-validator==0.7.2
 jsonschema==4.26.0
+pip-audit==2.10.1

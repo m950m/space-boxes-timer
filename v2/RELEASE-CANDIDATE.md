@@ -59,6 +59,8 @@ Existing browser suites also passed 128 domain, 48 persistence/restart and 17
 mocked-sync checks; legacy presentation regressions run only as test fixtures.
 Chrome/axe checks cover mobile layout, keyboard dialogs, reduced motion and
 WCAG 2 A/AA and 2.1 AA rules on home/account/settings/planner.
+Runtime `pip-audit` 2.10.1 and npm audit found no known dependency vulnerabilities
+at this checkpoint; these checks are also in CI.
 
 `.github/workflows/v2-product-ci.yml` repeats disposable validation and container
 packaging without deployment. The obsolete mocked UI smoke harness is replaced

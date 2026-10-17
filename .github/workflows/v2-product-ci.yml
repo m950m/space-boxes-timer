@@ -43,6 +43,10 @@ jobs:
           python v2/frontend/tests/run-focus-persistence-tests.py
           python v2/frontend/tests/run-connected-sync-tests.py
       - run: v2/.venv/bin/python v2/scripts/validate-openapi.py
+      - name: Runtime and frontend dependency advisories
+        run: |
+          v2/.venv/bin/pip-audit --no-deps --disable-pip -r v2/requirements-release.txt
+          npm --prefix v2/react-frontend audit
       - name: Package the candidate without publishing or deploying
         run: docker build --platform linux/amd64 -t space-boxes-v2:ci -f v2/Dockerfile v2
       - name: Disposable containers with HTTPS, secure cookies and restart persistence
