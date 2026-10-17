@@ -394,7 +394,7 @@ return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
 <section className="sync-status" aria-label="Saved focus status"><p role="status">{!hydrated?"Loading saved workspace…":reservation?(reservation.state==="paused"?"Paused":"Running")+(owns?" · controlled here":" · reserved in another tab or device"):"No active focus reservation."}</p>
 {focusError&&<p role="alert" className="form-error">{focusError}</p>}
 <button type="button" className="reset-button" disabled={working||!hydrated} onClick={refresh}>Refresh saved state</button>
-{reservation&&!owns&&<button type="button" className="save-button" disabled={working||!focusReady} onClick={async()=>{if(window.confirm("Take control of this reserved session here? The previous device will lose control. Unobserved time remains uncertain.")){try{await act(async()=>{await remoteFocus.current.recover({confirmed:true})})}catch{}}}}>Recover control here</button>}
+{reservation&&!owns&&<button type="button" className="save-button" disabled={working||!focusReady} onClick={async()=>{if(window.confirm("Take control of this reserved session here? The previous device will lose control. Unobserved time remains uncertain.")){try{await act(async()=>{await remoteFocus.current.load();await remoteFocus.current.recover({confirmed:true})})}catch{}}}}>Recover control here</button>}
 </section>
 <div role="status" aria-live="polite" className={"toast "+(message?"visible":"")}>{message}</div>
 <Modal title="Plan your space" open={panel==="planner"} onOpenChange={o=>!o&&setPanel(null)}>
