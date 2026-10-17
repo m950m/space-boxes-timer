@@ -223,6 +223,18 @@
         taskOps().length === 5 && lastOp().baseRevision === 11
         && lastOp().record.title === "Edited third",
         JSON.stringify(lastOp()));
+      const newDay = "2026-11-02";
+      const newTask = {id: crypto.randomUUID(), ownershipScopeId: store.localScopeId,
+        planDayId: newDay, planDay: {timezone: "Pacific/Auckland"}, title: "New local day",
+        plannedStart: "10:00", classification: "extra",
+        sessionPlan: [{id: crypto.randomUUID(), activeMinutes: 15}]};
+      const added = await store.commit(store.localScopeId, conflicting.revision,
+        [{type: "create", task: newTask}]);
+      respond = respondPush("accepted", 13, 13);
+      await connection.pushPending({snapshot: added, focusState: focusState()});
+      assert("post-connection new local days upload before tasks with their timezone",
+        pushes.at(-1).some(op => op.kind === "plan_day" && op.record.id === newDay
+          && op.record.timezone === "Pacific/Auckland"), JSON.stringify(pushes.at(-1)));
     } catch (caught) { error = describe(caught); }
     reported = true;
     sessionStorage.clear();

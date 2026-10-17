@@ -12,7 +12,7 @@
  */
 
 import { DATABASE_NAME, DATABASE_VERSION } from "../persistence/planning-store.js";
-import * as api from "./api.js";
+import * as defaultApi from "./api.js";
 import { buildConnectOps, buildSessionOps, taskContentHash, wireTaskRecord } from "./payload.js";
 
 const ACK_PREFIX = "connected:";
@@ -53,8 +53,9 @@ const writeAck = (localScopeId, value) =>
   withMetadata(true, (store) => store.put({ key: ACK_PREFIX + localScopeId, value }));
 
 export class Connection {
-  constructor({ onStatus = () => {} } = {}) {
+  constructor({ onStatus = () => {}, api = defaultApi } = {}) {
     this.onStatus = onStatus;
+    this.api = api;
     this.account = null;      // { email, scopeId } when signed in
     this.ack = null;          // durable acknowledgement for this local scope
     this.lastError = null;
@@ -71,7 +72,7 @@ export class Connection {
 
   async init() {
     try {
-      const me = await api.fetchMe();
+      const me = await this.api.fetchMe();
       this.account = me.account;
     } catch {
       this.account = null;
@@ -80,21 +81,21 @@ export class Connection {
   }
 
   async register(email, password) {
-    const result = await api.register(email, password);
+    const result = await this.api.register(email, password);
     this.account = result.account;
     this.ack = null;
     return this.account;
   }
 
   async login(email, password) {
-    const result = await api.login(email, password);
+    const result = await this.api.login(email, password);
     this.account = result.account;
     this.ack = null;
     return this.account;
   }
 
   async logout() {
-    await api.logout();
+    await this.api.logout();
     this.account = null;
     this.ack = null;
   }
@@ -130,7 +131,7 @@ export class Connection {
       return { results: [] };
     }
     this.report("syncing", `Uploading ${ops.length} local record(s)…`);
-    const response = await api.syncPush(ops);
+    const response = await this.api.syncPush(ops);
     const taskById = new Map(snapshot.tasks.map((task) => [task.id, task]));
     this.ack = {
       accountScopeId: this.account.scopeId,
@@ -167,7 +168,7 @@ export class Connection {
     this.report("syncing", "Synchronizing…");
     try {
       const pushResults = await this.pushPending({ snapshot, focusState });
-      const feed = await api.syncPull(this.ack.lastPullRevision ?? 0);
+      const feed = await this.api.syncPull(this.ack.lastPullRevision ?? 0);
       const merge = await this.mergePulledTasks(store, snapshot, feed);
       this.ack.lastPullRevision = feed.scopeRevision;
       this.ack.lastSyncAt = Date.now();
@@ -189,7 +190,8 @@ export class Connection {
   async pushPending({ snapshot, focusState }) {
     const acked = this.ack;
     acked.contentHashes = acked.contentHashes ?? {};
-    const ops = [];
+    const ops = buildConnectOps({tasks: snapshot.tasks, focusState: {sessions: [], timezone: localTimezone()}}).filter(op => op.kind === "plan_day");
+    const dayCount = ops.length;
     const opHashes = new Map();
     for (const task of snapshot.tasks) {
       const base = acked.recordRevisions[task.id];
@@ -212,8 +214,8 @@ export class Connection {
         if (!acked.sessionIds.includes(op.record.id)) ops.push(op);
       }
     }
-    if (!ops.length) return "Nothing new to upload.";
-    const response = await api.syncPush(ops);
+    if (ops.length === dayCount) return "Nothing new to upload.";
+    const response = await this.api.syncPush(ops);
     response.results.forEach((result, index) => {
       const op = ops[index];
       if (op.kind !== "task") {
@@ -280,7 +282,7 @@ export class Connection {
   }
 
   async deleteAccount(password) {
-    await api.deleteAccount(password);
+    await this.api.deleteAccount(password);
     this.account = null;
     this.ack = null;
   }

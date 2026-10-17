@@ -59,6 +59,7 @@ export function setTaskClassification(
     task.ownershipScopeId === ownershipScopeId
     && task.planDayId === target.planDayId
     && task.classification === "primary"
+    && !task.cancelledAt
   )).length;
   if (primaryCount > 3) {
     throw new RangeError("A Plan Day permits at most three Primary tasks per scope.");
