@@ -11,6 +11,7 @@ import {toRemoteView,currentDay,timezone,safeLinks,type PullFeed,type RemoteTask
 import {createBrowserFocus} from "./connected/focus/browser-focus.js";
 import {getDayActivityReport} from "./connected/reports/activity-reports.js";
 import {AdvancedPlanner} from "./AdvancedPlanner";
+import {LOCAL_ONLY} from "./release";
 
 
 function Icon({name,size=20}:{name:string;size?:number}){
@@ -261,7 +262,7 @@ useEffect(()=>{
   (async()=>{
     await store.init();if(cancelled){store.close();return;}
     workspace.current=store;
-    try{await accountRequest("accounts/me");const local=await store.focusStore().loadFocus();if(!local.reservation)store.remote=true;else setMessage("Signed in. End your local reserved session before loading the account workspace.");}catch(e){if((e as any)?.status!==401)setMessage("Account status unavailable. Local workspace loaded; reconnect explicitly when online.");}
+    if(!LOCAL_ONLY){try{await accountRequest("accounts/me");const local=await store.focusStore().loadFocus();if(!local.reservation)store.remote=true;else setMessage("Signed in. End your local reserved session before loading the account workspace.");}catch(e){if((e as any)?.status!==401)setMessage("Account status unavailable. Local workspace loaded; reconnect explicitly when online.");}}
     if(cancelled)return;
     setConnected(store.remote);await loadRemote();if(!cancelled)setHydrated(true);
     try{setQuiet(localStorage.getItem("space-boxes-quiet-motion")==="true");const minutes=Number(localStorage.getItem("space-boxes-default-minutes"));if([5,15,25,45,60,90].includes(minutes))setDefaultMinutes(minutes)}catch{setMessage("Preferences could not be loaded from browser storage.")}
@@ -269,6 +270,7 @@ useEffect(()=>{
   return()=>{cancelled=true;store.close();if(workspace.current===store)workspace.current=null;};
 },[]);
 useEffect(()=>{
+  if(LOCAL_ONLY)return;
   function verify(){
     const url=new URL(window.location.href);
     const token=new URLSearchParams(url.hash.slice(1)).get("verify")||url.searchParams.get("verify");
@@ -368,7 +370,7 @@ function choose(id:number){if(s&&s.taskId!==id){setMessage("One box at a time. E
 const locked=!!s;
 return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
 <a className="skip-link" href="#focus-controls">Skip to focus controls</a>
-<header className="topbar"><a href="/" className="brand" aria-label="Space Boxes home"><Icon name="box" size={27}/><span>space boxes<span className="brand-point">.</span></span></a><nav aria-label="Main navigation"><button className="nav-current" onClick={()=>setPanel(null)}>My space</button><button onClick={()=>setPanel("history")}>History</button><button onClick={()=>setPanel("insights")}>Insights</button><button onClick={()=>setPanel("planner")}>Planner</button></nav><div className="top-actions"><span className="demo-label">{connected?"Connected account":"Local workspace"}</span><button className="icon-button" aria-label="Settings" onClick={()=>setPanel("settings")}><Icon name="settings"/></button><button className="account-button" aria-label="Account" onClick={()=>setPanel("account")}><Icon name="user" size={18}/></button></div></header>
+<header className="topbar"><a href={import.meta.env.BASE_URL} className="brand" aria-label="Space Boxes home"><Icon name="box" size={27}/><span>space boxes<span className="brand-point">.</span></span></a><nav aria-label="Main navigation"><button className="nav-current" onClick={()=>setPanel(null)}>My space</button><button onClick={()=>setPanel("history")}>History</button><button onClick={()=>setPanel("insights")}>Insights</button><button onClick={()=>setPanel("planner")}>Planner</button></nav><div className="top-actions"><span className="demo-label">{connected?"Connected account":"Local workspace"}</span><button className="icon-button" aria-label="Settings" onClick={()=>setPanel("settings")}><Icon name="settings"/></button>{!LOCAL_ONLY&&<button className="account-button" aria-label="Account" onClick={()=>setPanel("account")}><Icon name="user" size={18}/></button>}</div></header>
 <section className="universe">
 <div className="intro"><p className="eyebrow">LESS IN YOUR HEAD. MORE IN YOUR DAY.</p><h1>{completed===3?"Space, reclaimed.":s?"Just this. Just now.":"Room to focus."}</h1><p>{completed===3?"Your three priorities are complete. Take a breath.":"Three priorities. One open box. A little more clarity."}</p></div>
 <div className="scene" ref={scene} onPointerMove={e=>{if(quiet||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;const r=e.currentTarget.getBoundingClientRect();e.currentTarget.style.setProperty("--pointer-x",((e.clientX-r.left)/r.width-.5)*12+"px");e.currentTarget.style.setProperty("--pointer-y",((e.clientY-r.top)/r.height-.5)*8+"px")}} onPointerLeave={e=>{e.currentTarget.style.setProperty("--pointer-x","0px");e.currentTarget.style.setProperty("--pointer-y","0px")}}>
@@ -390,7 +392,8 @@ return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
 <div className="daily-progress"><div className="progress-markers">{state.tasks.map(t=><span className={t.done?"filled":""} key={t.id}>{t.done?<Icon name="check" size={10}/>:null}</span>)}</div><span>{completed} of 3 priorities complete</span></div>
 </section>
 <section className="task-dock" aria-label="Your three daily priorities"><div className="dock-heading"><span>{planDay===currentDay()?"Today's space":"Space for "+planDay}</span><small>Only what matters.</small></div><div className="task-list">{state.tasks.map(task=><button key={task.id} className={"task-row "+(t.id===task.id?"selected ":"")+(task.done?"done":"")} onClick={()=>choose(task.id)} aria-pressed={t.id===task.id}><span className="row-number">{task.done?<Icon name="check" size={17}/>:"0"+task.id}</span><span className="row-copy"><strong>{task.title}</strong><small>{task.done?"Completed":s?.taskId===task.id?(s.paused?"Paused":"Focusing now"):task.start+" · "+task.minutes+" min"}</small></span><span className="row-arrow">{s&&s.taskId!==task.id?"○":"↗"}</span></button>)}</div><button className="plan-button" disabled={locked} onClick={()=>setPanel("edit")}><Icon name="edit" size={16}/><span>Edit selected task</span></button></section>
-<footer><span>Make space for what matters.</span><span>{connected?"Account workspace":"Local tasks · Sign in for sync"}</span></footer>
+<footer><span>Make space for what matters.</span><span>{connected?"Account workspace":(LOCAL_ONLY?"Local tasks · No automatic device sync":"Local tasks · Sign in for sync")}</span></footer>
+{LOCAL_ONLY&&<p className="local-notice">Saved in this browser only. No automatic sync across devices. Clearing browser storage can erase your data. <button onClick={()=>setPanel("settings")}>Back up / restore JSON</button></p>}
 <section className="sync-status" aria-label="Saved focus status"><p role="status">{!hydrated?"Loading saved workspace…":reservation?(reservation.state==="paused"?"Paused":"Running")+(owns?" · controlled here":" · reserved in another tab or device"):"No active focus reservation."}</p>
 {focusError&&<p role="alert" className="form-error">{focusError}</p>}
 <button type="button" className="reset-button" disabled={working||!hydrated} onClick={refresh}>Refresh saved state</button>
@@ -426,7 +429,7 @@ return <main className={"space-app "+(s?"focus-mode ":"")+(quiet?"quiet ":"")}>
     <div><strong>{completed}/3</strong><span>Today's completed priorities</span></div>
   </div>}
 </Modal>
-<Modal title="A space that suits you" open={panel==="settings"} onOpenChange={o=>!o&&setPanel(null)}><SettingsPanel defaultMinutes={defaultMinutes} onDefaultMinutes={value=>{try{localStorage.setItem("space-boxes-default-minutes",String(value));setDefaultMinutes(value)}catch{setMessage("Session default could not be saved.")}}} workspace={workspace.current} quiet={quiet} onQuiet={value=>{try{localStorage.setItem("space-boxes-quiet-motion",String(value));setQuiet(value)}catch{setMessage("Motion preference could not be saved.")}}}/></Modal>
-<Modal title="Space Boxes account" open={panel==="account"} onOpenChange={o=>!o&&setPanel(null)}><ConnectedAccount verificationMessage={verificationMessage} notify={setMessage} onImportLocal={async()=>{if(!workspace.current)throw new Error("Workspace unavailable.");await workspace.current.importLocal();await loadRemote()}} onAuthenticated={connectAccount} onSignedOut={signOutWorkspace}/></Modal>
+<Modal title="A space that suits you" open={panel==="settings"} onOpenChange={o=>!o&&setPanel(null)}><SettingsPanel onRestored={async()=>{await remoteFocus.current?.load();await loadRemote();setAuthorityGeneration(value=>value+1)}} defaultMinutes={defaultMinutes} onDefaultMinutes={value=>{try{localStorage.setItem("space-boxes-default-minutes",String(value));setDefaultMinutes(value)}catch{setMessage("Session default could not be saved.")}}} workspace={workspace.current} quiet={quiet} onQuiet={value=>{try{localStorage.setItem("space-boxes-quiet-motion",String(value));setQuiet(value)}catch{setMessage("Motion preference could not be saved.")}}}/></Modal>
+{!LOCAL_ONLY&&<Modal title="Space Boxes account" open={panel==="account"} onOpenChange={o=>!o&&setPanel(null)}><ConnectedAccount verificationMessage={verificationMessage} notify={setMessage} onImportLocal={async()=>{if(!workspace.current)throw new Error("Workspace unavailable.");await workspace.current.importLocal();await loadRemote()}} onAuthenticated={connectAccount} onSignedOut={signOutWorkspace}/></Modal>}
 </main>
 }

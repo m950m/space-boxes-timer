@@ -1,0 +1,66 @@
+name: V2 local-first Pages
+on:
+  pull_request:
+    paths: ['v2/frontend/js/**', 'v2/react-frontend/**', '.github/workflows/v2-pages.yml']
+  push:
+    branches: ['feature/v2-local-first-pages']
+    paths: ['v2/frontend/js/**', 'v2/react-frontend/**', '.github/workflows/v2-pages.yml']
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy this tested revision to the PUBLIC Pages site (replaces v1)'
+        type: boolean
+        default: false
+      approved_sha:
+        description: 'Explicitly approved full commit SHA; must equal the selected workflow revision'
+        type: string
+        required: false
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: v2/react-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: v2/react-frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test:api
+      - run: npm run test:local
+      - run: npm run build:pages
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:pages
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pages-browser-report
+          path: v2/react-frontend/pages-test-report
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: v2/react-frontend/dist
+  deploy:
+    # PRs, pushes and default manual runs can NEVER publish. Approval binds to a revision.
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy && inputs.approved_sha == github.sha
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: public-github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Publish the verified artifact after explicit approval
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -4,6 +4,7 @@ import {wireTaskRecord} from "../../../frontend/js/connected/payload.js";
 import {createServerFocusStore} from "./connected/server-focus-store.js";
 import * as api from "./connected/api.js";
 import {timezone,type PullFeed,type RemoteTask} from "./connected/live";
+import {LOCAL_ONLY} from "./release";
 
 // Local planning and focus use the existing serialized IndexedDB domain store.
 // Connected writes remain server commands with explicit revision acknowledgements.
@@ -11,10 +12,15 @@ export class Workspace {
   private local:any;
   remote=false;
   async init(){this.local=await openPlanningStore();}
+  async exportBackup(){return this.local.exportBackup();}
+  async restoreBackup(backup:unknown){
+    if(this.remote)throw new Error("Switch to the local workspace before restoring a backup.");
+    return this.local.restoreBackup(backup);
+  }
   close(){this.local?.close();}
-  focusStore(){return this.remote?createServerFocusStore():this.local;}
+  focusStore(){return this.remote&&!LOCAL_ONLY?createServerFocusStore():this.local;}
   async pull():Promise<PullFeed>{
-    if(this.remote)return await api.syncPull(0) as PullFeed;
+    if(this.remote&&!LOCAL_ONLY)return await api.syncPull(0) as PullFeed;
     const plan=await this.local.load();
     const focus=await this.local.loadFocus();
     const tasks=plan.tasks.map((task:any)=>({...wireTaskRecord(task),recordRevision:plan.revision}));
@@ -24,7 +30,7 @@ export class Workspace {
       decisions:focus.reconciliations} as PullFeed;
   }
   async push(ops:Record<string,any>[]){
-    if(this.remote){
+    if(this.remote&&!LOCAL_ONLY){
       const response=await api.syncPush(ops) as {results:{status:string;message?:string}[]};
       if(response.results?.length!==ops.length||response.results.some(r=>!["accepted","duplicate"].includes(r.status)))
         throw new Error(response.results?.find(r=>!["accepted","duplicate"].includes(r.status))?.message||"Change was not accepted. Refresh to resolve the conflict; your draft is preserved.");
@@ -57,6 +63,7 @@ export class Workspace {
     if(commands.length)await this.local.commit(plan.ownershipScopeId,plan.revision,commands);
   }
   async importLocal(){
+    if(LOCAL_ONLY)throw new Error("Accounts are unavailable in this local release.");
     if(!this.remote)throw new Error("Sign in before importing.");
     let failure="";
     const connection=new Connection({api,onStatus:(state?:string,detail?:string)=>{if(state==="sync-error")failure=detail||"Synchronization failed.";}});

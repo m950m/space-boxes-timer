@@ -4,8 +4,9 @@ import {
   cancelTaskPlanningRecord, completeTaskPlanningRecord,
 } from "../domain/task-planning.js";
 import { setTaskClassification } from "../domain/task-classification.js";
-import { validateTaskHierarchy, setTaskParent, splitTaskPlanningRecord } from "../domain/task-hierarchy.js";
+import { setTaskParent, splitTaskPlanningRecord } from "../domain/task-hierarchy.js";
 import { createFocusState, validateFocusState, transitionFocus } from "../focus/focus-lifecycle.js";
+import { BACKUP_FORMAT, BACKUP_VERSION, validateTasks, validateWorkspaceBackup } from "./backup-format.js";
 
 export const DATABASE_NAME = "space-boxes-v2";
 export const DATABASE_VERSION = 2;
@@ -30,21 +31,6 @@ function hydrateFocus(record, scopeId, tasks) {
     throw new TypeError("Invalid local focus/task association.");
   }
   return state;
-}
-
-function validateTasks(tasks, scopeId) {
-  validateTaskHierarchy(tasks);
-  const primaryCounts = new Map();
-  for (const task of tasks) {
-    createTaskPlanningRecord(task);
-    if (task.ownershipScopeId !== scopeId) throw new TypeError("Task ownership does not match scope.");
-    if (!["primary", "extra"].includes(task.classification)) throw new TypeError("Invalid classification.");
-    if (task.classification === "primary" && !task.cancelledAt) {
-      const count = (primaryCounts.get(task.planDayId) ?? 0) + 1;
-      if (count > 3) throw new RangeError("A Plan Day permits at most three Primary tasks per scope.");
-      primaryCounts.set(task.planDayId, count);
-    }
-  }
 }
 
 function hydrate(scopeId, scope, records) {
@@ -253,12 +239,54 @@ export async function openPlanningStore({ onStatus = () => {} } = {}) {
         return result;
       } catch (error) { status("error", error, operation); throw error; }
     }
+    async function backupOperation(input) {
+      const writing = input !== undefined;
+      if (closed) throw new DOMException("Storage connection closed. Reload V2.", "InvalidStateError");
+      // Validate and detach before opening a write transaction. Never partially import.
+      const backup = writing ? validateWorkspaceBackup(structuredClone(input)) : null;
+      if (backup) {
+        backup.planning.ownershipScopeId = initial;
+        for (const task of backup.planning.tasks) task.ownershipScopeId = initial;
+        backup.focus.ownershipScopeId = initial;
+        for (const session of backup.focus.sessions) session.ownershipScopeId = initial;
+      }
+      return transaction(db, writing ? "readwrite" : "readonly", (tx, done, guard) => {
+        const scopes = tx.objectStore("scopes"), tasks = tx.objectStore("tasks"), focusStore = tx.objectStore("focus");
+        const scope = scopes.get(initial), records = tasks.index("scope").getAll(initial), focus = focusStore.get(initial);
+        focus.onsuccess = () => guard(() => {
+          const planning = hydrate(initial, scope.result, records.result);
+          const state = hydrateFocus(focus.result, initial, planning.tasks);
+          if (!backup) {
+            done({ format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), planning, focus: state });
+            return;
+          }
+          if (state.reservation) throw new Error("End the current focus session before importing. Your data is unchanged.");
+          if (JSON.stringify(planning.tasks) === JSON.stringify(backup.planning.tasks)
+              && JSON.stringify(state) === JSON.stringify(backup.focus)) {
+            done({ imported: false }); return;
+          }
+          if (planning.tasks.length || state.sessions.length) {
+            throw new Error("Restore requires an empty local workspace. Use a separate browser profile or export your current data first. Existing data was not changed.");
+          }
+          // One serialized transaction checks emptiness and restores all related records.
+          for (const task of backup.planning.tasks) tasks.add(task);
+          scopes.put({ ownershipScopeId: initial, revision: Math.max(1, planning.revision + 1, backup.planning.revision), taskIds: backup.planning.tasks.map(task => task.id) });
+          focusStore.put(backup.focus);
+          done({ imported: true });
+        });
+      });
+    }
     status("ready", undefined, 0);
     return {
       localScopeId: initial,
       load: (scopeId = initial) => run(scopeId, false),
       commit: (scopeId, expectedRevision, commands) => run(scopeId, true, expectedRevision, commands),
       loadFocus: () => runFocus(),
+      exportBackup: () => backupOperation(),
+      restoreBackup: (backup) => {
+        if (backup === undefined) return Promise.reject(new TypeError("A backup is required."));
+        return backupOperation(backup);
+      },
       commitFocus: (command) => {
         // Undefined is invalid write intent, never a silently successful load.
         return runFocus(command === undefined ? null : command);

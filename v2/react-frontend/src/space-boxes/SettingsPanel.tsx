@@ -1,7 +1,8 @@
 import {useEffect,useState,type FormEvent} from "react";
 import * as api from "./connected/api.js";
 import type {Workspace} from "./workspace";
-export function SettingsPanel({defaultMinutes,onDefaultMinutes,workspace,quiet,onQuiet}:{defaultMinutes:number;onDefaultMinutes:(value:number)=>void;workspace:Workspace|null;quiet:boolean;onQuiet:(quiet:boolean)=>void}){
+import {LocalBackup} from "./LocalBackup";
+export function SettingsPanel({defaultMinutes,onDefaultMinutes,workspace,quiet,onQuiet,onRestored}:{defaultMinutes:number;onDefaultMinutes:(value:number)=>void;workspace:Workspace|null;quiet:boolean;onQuiet:(quiet:boolean)=>void;onRestored:()=>Promise<void>}){
   const [cadence,setCadence]=useState("");const [email,setEmail]=useState(false);
   const [domains,setDomains]=useState("");const [enabled,setEnabled]=useState(false);
   const [loaded,setLoaded]=useState(false);
@@ -22,6 +23,7 @@ export function SettingsPanel({defaultMinutes,onDefaultMinutes,workspace,quiet,o
   }
   return <div><label className="setting-row">New focus session length<select value={defaultMinutes} onChange={e=>onDefaultMinutes(Number(e.target.value))}>{[5,15,25,45,60,90].map(value=><option key={value} value={value}>{value} minutes</option>)}</select></label><div className="setting-row"><span><strong>Quiet motion</strong><small>Keep the scene still. System reduced-motion is always respected.</small></span><input aria-label="Quiet motion" type="checkbox" checked={quiet} onChange={e=>onQuiet(e.target.checked)}/></div>
     <p className="fineprint">Local plans and evidence persist in this browser. Export important data before clearing browser storage.</p>
+    {!workspace?.remote&&<LocalBackup workspace={workspace} onRestored={onRestored}/>}
     {workspace?.remote&&<form className="editor" onSubmit={save}>
       <label>Report cadence<select aria-label="Report cadence" value={cadence} disabled={working||!loaded} onChange={e=>setCadence(e.target.value)}><option value="">Off</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
       <label><input type="checkbox" checked={email} disabled={working||!loaded} onChange={e=>setEmail(e.target.checked)}/> Email report preference</label>
