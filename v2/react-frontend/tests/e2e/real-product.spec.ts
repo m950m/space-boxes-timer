@@ -53,6 +53,12 @@ test("registration, verification, focus, refresh, recovery, export and deletion"
   await page.getByRole("button",{name:"Start focus",exact:true}).click();await expect(page.getByRole("button",{name:"Pause focus",exact:true})).toBeEnabled();
   await expect(page.locator(".timer")).toContainText("24");
   await page.getByRole("button",{name:"Pause focus",exact:true}).click();await expect(page.getByRole("button",{name:"Resume focus",exact:true})).toBeEnabled();
+  const controlDevice=await browser.newContext();const controlPage=await controlDevice.newPage();await controlPage.goto("/");await login(controlPage,email);
+  await expect(controlPage.getByRole("button",{name:"Recover control here"})).toBeEnabled();
+  await expect(controlPage.getByRole("button",{name:"Resume focus",exact:true})).toBeDisabled();
+  controlPage.once("dialog",dialog=>dialog.accept());await controlPage.getByRole("button",{name:"Recover control here"}).click();
+  await controlPage.getByRole("button",{name:"Resume focus",exact:true}).click();await controlPage.getByRole("button",{name:"Pause focus",exact:true}).click();
+  await page.getByRole("button",{name:"Refresh saved state"}).click();await expect(page.getByRole("button",{name:"Resume focus",exact:true})).toBeDisabled();await controlDevice.close();
   await page.reload();await expect(page.getByRole("button",{name:"Recover control here"})).toBeEnabled();
   await expect(page.getByRole("button",{name:"Resume focus",exact:true})).toBeDisabled();
   page.once("dialog",dialog=>dialog.accept());await page.getByRole("button",{name:"Recover control here"}).click();

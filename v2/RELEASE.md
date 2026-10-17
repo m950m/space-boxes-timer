@@ -1,5 +1,10 @@
 # V2 release preparation and local staging
 
+Current React product candidate, executable gates and isolated staging inputs:
+[RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md). The checkpoint below is historical;
+current packaging requires the React build, and development mail uses a private
+test backend rather than logging recovery tokens to the console.
+
 For the subsequently added provider-independent Docker stack, TLS/container
 rehearsal and implemented OpenAPI contract, see [CONTAINERS.md](CONTAINERS.md).
 Prepared (not applied) zero-cost hosting configuration for Render Free and
