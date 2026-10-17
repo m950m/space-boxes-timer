@@ -53,7 +53,17 @@ def register(email="a@example.com", password=PASSWORD):
     api = AuthenticatedJsonClient(client)
     api.prime_csrf()
     response = api.post("/api/v2/accounts/register", {"email": email, "password": password})
-    assert response.status_code == 201, response.content
+    assert response.status_code == 202, response.content
+    from django.core import mail
+    from urllib.parse import parse_qs, urlparse
+    link = next(line.split(": ", 1)[1] for line in mail.outbox[-1].body.splitlines()
+                if line.startswith("Confirm your email: "))
+    token = parse_qs(urlparse(link).fragment)["verify"][0]
+    verified = api.post("/api/v2/accounts/verify", {"token": token})
+    assert verified.status_code == 200, verified.content
+    logged_in = api.post("/api/v2/accounts/login", {"email": email, "password": password})
+    assert logged_in.status_code == 200, logged_in.content
+    api.prime_csrf()
     return api
 
 
@@ -240,5 +250,7 @@ class V1IsolationTests(TestCase):
         """The V1 static surface stays on its original routes."""
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        # V2 root serves the planner document.
-        self.assertContains(response, "Local planner")
+        # The Higgsfield design is the V2 root; the previous planner remains accessible
+        # for rollback but is not the main user experience.
+        self.assertContains(response, "space-boxes-new.js")
+        self.assertContains(self.client.get("/classic"), "Local planner")

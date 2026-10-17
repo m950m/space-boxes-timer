@@ -152,6 +152,15 @@ EMAIL_USE_SSL = env_bool("SPACE_BOXES_EMAIL_USE_SSL", False)
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured("Choose either email STARTTLS or implicit TLS")
 EMAIL_TIMEOUT = 10
+SPACE_BOXES_PUBLIC_WEB_URL = required_env(
+    "SPACE_BOXES_PUBLIC_WEB_URL", "http://127.0.0.1:8000" if DEBUG else ""
+).rstrip("/")
+public_url = urlsplit(SPACE_BOXES_PUBLIC_WEB_URL)
+if (public_url.scheme not in ({"http", "https"} if DEBUG else {"https"})
+    or not public_url.netloc or public_url.username or public_url.password
+    or public_url.path or public_url.query or public_url.fragment):
+    raise ImproperlyConfigured("SPACE_BOXES_PUBLIC_WEB_URL must be an explicit public origin")
+
 DEFAULT_FROM_EMAIL = required_env(
     "SPACE_BOXES_FROM_EMAIL", "no-reply@spaceboxes.local" if DEBUG else ""
 )

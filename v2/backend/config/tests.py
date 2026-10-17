@@ -9,19 +9,18 @@ class FoundationSmokeTests(SimpleTestCase):
     def test_frontend_document_and_module_reference(self):
         response = self.client.get("/")
 
-        self.assertContains(response, "Local planner")
+        self.assertContains(response, "Space Boxes")
         self.assertEqual(response["Content-Type"], "text/html; charset=utf-8")
         self.assertInHTML(
-            '<p id="v2-startup-status" role="status" aria-live="polite" '
-            'aria-atomic="true">Loading local plans…</p>',
+            '<div id="root"></div>',
             response.content.decode(),
         )
         self.assertInHTML(
-            '<script type="module" src="./js/app.js"></script>',
+            '<script type="module" src="/js/space-boxes-new.js"></script>',
             response.content.decode(),
         )
         self.assertInHTML(
-            '<link rel="stylesheet" href="./css/planner.css">',
+            '<link rel="stylesheet" href="/css/space-boxes-new.css">',
             response.content.decode(),
         )
 

@@ -25,6 +25,7 @@ class ReleaseSettingsTests(SimpleTestCase):
             "SPACE_BOXES_DB_HOST": "127.0.0.1",
             "SPACE_BOXES_EMAIL_HOST": "smtp.example.invalid",
             "SPACE_BOXES_FROM_EMAIL": "support@example.invalid",
+            "SPACE_BOXES_PUBLIC_WEB_URL": "https://app.example.invalid",
         })
         for key, value in (changes or {}).items():
             if value is None:
@@ -67,7 +68,7 @@ class ReleaseSettingsTests(SimpleTestCase):
     def test_required_production_environment_fails_closed(self):
         for name in ("DJANGO_SECRET_KEY", "DJANGO_ALLOWED_HOSTS", "SPACE_BOXES_DB_NAME",
                      "SPACE_BOXES_DB_USER", "SPACE_BOXES_DB_PASSWORD", "SPACE_BOXES_DB_HOST",
-                     "SPACE_BOXES_EMAIL_HOST", "SPACE_BOXES_FROM_EMAIL"):
+                     "SPACE_BOXES_EMAIL_HOST", "SPACE_BOXES_FROM_EMAIL", "SPACE_BOXES_PUBLIC_WEB_URL"):
             with self.subTest(name=name):
                 result = self.load_settings({name: None})
                 self.assertNotEqual(result.returncode, 0)
@@ -84,6 +85,8 @@ class ReleaseSettingsTests(SimpleTestCase):
             {"DJANGO_CSRF_TRUSTED_ORIGINS": "https://example.com/path"},
             {"DJANGO_CSRF_TRUSTED_ORIGINS": "https://*.example.com"},
             {"SPACE_BOXES_EMAIL_USE_SSL": "1"},
+            {"SPACE_BOXES_PUBLIC_WEB_URL": "http://app.example.invalid"},
+            {"SPACE_BOXES_PUBLIC_WEB_URL": "https://app.example.invalid/?token=private"},
         ):
             with self.subTest(changes=changes):
                 self.assertNotEqual(self.load_settings(changes).returncode, 0)
