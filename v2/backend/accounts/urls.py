@@ -7,6 +7,8 @@ from . import api
 urlpatterns = [
     path("csrf", api.csrf),
     path("accounts/register", api.register),
+    path("accounts/verify", api.verify_email),
+    path("accounts/verify/resend", api.resend_verification),
     path("accounts/login", api.login_view),
     path("accounts/logout", api.logout_view),
     path("accounts/logout-all", api.logout_all),
