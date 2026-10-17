@@ -19,28 +19,48 @@ class JsonClientMixin:
 
 
 class RegistrationTests(JsonClientMixin, TestCase):
-    def test_register_creates_account_scope_and_session(self):
+    def test_register_requires_verified_email_before_login(self):
         response = self.post_json("/api/v2/accounts/register", {
             "email": "New@Example.com", "password": PASSWORD,
         })
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json()["verificationRequired"])
         user = User.objects.get(email="new@example.com")
         self.assertTrue(user.ownership_scope)
-        body = response.json()
-        self.assertEqual(body["account"]["email"], "new@example.com")
-        self.assertTrue(body["account"]["scopeId"])
-        # The authenticated session cookie identifies the account.
-        me = self.client.get("/api/v2/accounts/me")
-        self.assertEqual(me.json()["account"]["email"], "new@example.com")
+        self.assertFalse(user.is_active)
+        self.assertEqual(self.client.get("/api/v2/accounts/me").status_code, 401)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Confirm your Space Boxes email", mail.outbox[0].subject)
+        token = self._token()
+        verified = self.post_json("/api/v2/accounts/verify", {"token": token})
+        self.assertEqual(verified.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertIsNotNone(user.email_verified_at)
+        self.assertEqual(self.post_json("/api/v2/accounts/verify", {"token": token}).status_code, 400)
+        login_response = self.post_json("/api/v2/accounts/login", {
+            "email": user.email, "password": PASSWORD,
+        })
+        self.assertEqual(login_response.status_code, 200)
+
+    def _token(self):
+        from urllib.parse import parse_qs, urlparse
+        link = next(line.split(": ", 1)[1] for line in mail.outbox[0].body.splitlines()
+                    if line.startswith("Confirm your email: "))
+        self.assertEqual(urlparse(link).scheme, "https")
+        return parse_qs(urlparse(link).query)["verify"][0]
 
     def test_register_duplicate_is_generic(self):
         User.objects.create_user(email="taken@example.com", password=PASSWORD)
-        response = self.post_json("/api/v2/accounts/register", {
+        known = self.post_json("/api/v2/accounts/register", {
             "email": "taken@example.com", "password": PASSWORD,
         })
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"]["code"], "registration_failed")
-        self.assertNotIn("exists", response.json()["error"]["message"])
+        fresh = self.post_json("/api/v2/accounts/register", {
+            "email": "available@example.com", "password": PASSWORD,
+        })
+        self.assertEqual(known.status_code, 202)
+        self.assertEqual(known.json(), fresh.json())
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_register_rejects_weak_password_and_bad_email(self):
         for payload in (
@@ -52,6 +72,33 @@ class RegistrationTests(JsonClientMixin, TestCase):
                 response = self.post_json("/api/v2/accounts/register", payload)
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json()["error"]["code"], "validation")
+
+    def test_invalid_verification_token(self):
+        response = self.post_json("/api/v2/accounts/verify", {"token": "invalid"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_resend_is_generic_for_unknown_account(self):
+        self.post_json("/api/v2/accounts/register", {
+            "email": "new@example.com", "password": PASSWORD,
+        })
+        first = self.post_json("/api/v2/accounts/verify/resend", {"email": "new@example.com"})
+        unknown = self.post_json("/api/v2/accounts/verify/resend", {"email": "missing@example.com"})
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(unknown.status_code, 202)
+        self.assertEqual(first.json(), unknown.json())
+        self.assertEqual(len(mail.outbox), 2)
+        from .models import EmailVerificationToken
+        self.assertEqual(EmailVerificationToken.objects.filter(user__email="new@example.com",
+            used_at__isnull=True).count(), 1)
+
+    def test_email_send_failure_rolls_back_new_account(self):
+        from unittest.mock import patch
+        with patch("accounts.api.send_verification_email", side_effect=OSError("SMTP unavailable")):
+            response = self.post_json("/api/v2/accounts/register", {
+                "email": "fail@example.com", "password": PASSWORD,
+            })
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(User.objects.filter(email="fail@example.com").exists())
 
 
 class LoginLogoutTests(JsonClientMixin, TestCase):

@@ -152,6 +152,8 @@ EMAIL_USE_SSL = env_bool("SPACE_BOXES_EMAIL_USE_SSL", False)
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured("Choose either email STARTTLS or implicit TLS")
 EMAIL_TIMEOUT = 10
+SPACE_BOXES_PUBLIC_WEB_URL = os.environ.get("SPACE_BOXES_PUBLIC_WEB_URL", "https://space-boxes-prototype.higgsfield.app").rstrip("/")
+
 DEFAULT_FROM_EMAIL = required_env(
     "SPACE_BOXES_FROM_EMAIL", "no-reply@spaceboxes.local" if DEBUG else ""
 )

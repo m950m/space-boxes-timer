@@ -10,6 +10,10 @@ RATE_LIMITS = {
     # key suffix -> (limit, window). Implementation defaults; the approved
     # policy requires only "temporary, single-use, rate-limited" recovery.
     "login": (10, timedelta(hours=1)),
+    "register_ip": (12, timedelta(hours=1)),
+    "verify_resend_ip": (12, timedelta(hours=1)),
+    "verify_resend_email": (3, timedelta(hours=1)),
+    "verify_confirm": (12, timedelta(hours=1)),
     "recovery_request_account": (5, timedelta(hours=1)),
     "recovery_request_ip": (10, timedelta(hours=1)),
     "recovery_confirm": (10, timedelta(hours=1)),

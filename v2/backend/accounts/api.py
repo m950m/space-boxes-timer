@@ -10,15 +10,21 @@ registration so every account has exactly one connected OwnershipScope.
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from django.utils import timezone
+import logging
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from common.json import ApiError, error_response, json_body
-from .models import RecoveryToken, User
+from .models import EmailVerificationToken, RecoveryToken, User
 from .recovery import send_recovery_email
+from .verification import send_verification_email
 from .throttling import allow, allowed_without_cost
+
+
+logger = logging.getLogger(__name__)
 
 
 def _error(code, message, status):
@@ -68,17 +74,83 @@ def register(request):
         validate_password(password)
     except Exception as exc:
         return _error("validation", " ".join(exc.messages), 400)
+    if not allow("register_ip", client_ip(request) or "unknown"):
+        return _error("rate_limited", "Please try again later.", 429)
+    response = {"ok": True, "verificationRequired": True,
+                "message": "Check your email for a verification link if registration is eligible."}
     if User.objects.filter(email=email).exists():
-        # Generic rejection: do not confirm which emails exist.
-        return _error("registration_failed", "Registration failed.", 400)
-    with transaction.atomic():
-        user = User.objects.create_user(email=email, password=password)
-        from productivity.services import create_scope_for_account
+        # Same success envelope; never reveal whether an account exists.
+        return JsonResponse(response, status=202)
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                email=email, password=password, is_active=False
+            )
+            from productivity.services import create_scope_for_account
+            create_scope_for_account(user)
+            send_verification_email(user, request_ip=client_ip(request))
+    except Exception:
+        logger.exception("Space Boxes registration could not be completed")
+        return _error("registration_unavailable", "Registration is temporarily unavailable.", 503)
+    return JsonResponse(response, status=202)
 
-        create_scope_for_account(user)
-    request.session.cycle_key()
-    login(request, user)
-    return JsonResponse({"account": account_payload(user)}, status=201)
+
+@require_POST
+def verify_email(request):
+    """Activate a registered account with a single-use emailed bearer token."""
+    if not allow("verify_confirm", client_ip(request) or "unknown"):
+        return _error("rate_limited", "Please try again later.", 429)
+    try:
+        secret = json_body(request).get("token")
+    except ApiError as exc:
+        return _error(exc.code, exc.message, exc.status)
+    token = EmailVerificationToken.find_valid(secret)
+    if token is None:
+        return _error("invalid_token", "Verification link is invalid or expired.", 400)
+    with transaction.atomic():
+        locked = EmailVerificationToken.objects.select_for_update().filter(
+            pk=token.pk, used_at__isnull=True, expires_at__gt=timezone.now()
+        ).first()
+        if locked is None:
+            return _error("invalid_token", "Verification link is invalid or expired.", 400)
+        user = User.objects.select_for_update().get(pk=locked.user_id)
+        now = timezone.now()
+        user.is_active = True
+        user.email_verified_at = now
+        user.save(update_fields=["is_active", "email_verified_at"])
+        EmailVerificationToken.objects.filter(
+            user=user, used_at__isnull=True
+        ).update(used_at=now)
+    return JsonResponse({"ok": True, "verified": True})
+
+
+@require_POST
+def resend_verification(request):
+    """Generic rate-limited resend that does not enumerate email addresses."""
+    try:
+        email = json_body(request).get("email")
+    except ApiError as exc:
+        return _error(exc.code, exc.message, exc.status)
+    if not isinstance(email, str):
+        return _error("validation", "Email is required.", 400)
+    email = email.strip().lower()
+    response = {"ok": True, "message": "If eligible, verification instructions will be sent."}
+    if not allow("verify_resend_ip", client_ip(request) or "unknown"):
+        return JsonResponse(response, status=202)
+    if not allow("verify_resend_email", email):
+        return JsonResponse(response, status=202)
+    user = User.objects.filter(email=email, is_active=False).first()
+    if user:
+        try:
+            with transaction.atomic():
+                EmailVerificationToken.objects.filter(
+                    user=user, used_at__isnull=True
+                ).update(used_at=timezone.now())
+                send_verification_email(user, request_ip=client_ip(request))
+        except Exception:
+            # Respond generically; do not leak account existence via provider status.
+            logger.exception("Space Boxes verification resend failed")
+    return JsonResponse(response, status=202)
 
 
 @require_POST
