@@ -1,8 +1,10 @@
 # Space Boxes — React frontend
 
-Original faceless-character, animated-box frontend built from the Higgsfield project and integrated with the existing Django V2 API.
+Original faceless-character, animated-box frontend built from the Higgsfield project, with local-first Pages and connected Django build modes.
 
-**Source of truth:** this folder is the editable frontend; `v2/backend` is the authoritative backend. Do not edit opaque generated `v2/frontend/js/space-boxes-new.js.gz` as source.
+**Source of truth:** this folder is the editable frontend. Pages uses the existing shared IndexedDB planner/focus store; `v2/backend` remains authoritative for the connected build. Do not edit opaque generated `v2/frontend/js/space-boxes-new.js.gz` as source.
+
+For the account-free GitHub Pages release, start with [PAGES-RELEASE.md](PAGES-RELEASE.md): `npm run dev -- --mode pages`, `npm run build:pages`, and `npm run test:pages`. The public deployment remains a separate explicit approval gate.
 
 ## Local development
 
@@ -14,7 +16,7 @@ npm run build
 npm run dev
 ```
 
-For development, Vite forwards `/api/v2` to `http://127.0.0.1:8000`. Change via `SPACE_BOXES_DEV_BACKEND`. On production, host the frontend behind a same-origin reverse proxy to Django; GitHub Pages alone cannot serve Django sessions, CSRF, or Postgres.
+For connected development, Vite forwards `/api/v2` to `http://127.0.0.1:8000`. Change via `SPACE_BOXES_DEV_BACKEND`. Host the connected production build behind a same-origin reverse proxy to Django. The Pages build hides these account controls and makes no backend requests.
 
 ## Notes
 

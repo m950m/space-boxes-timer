@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "build:pages": "tsc --noEmit && vite build --mode pages",
+    "test:local": "node --test tests/backup.test.mjs",
+    "test:pages": "playwright test --config playwright.pages.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:api": "node --test tests/api.test.mjs",
