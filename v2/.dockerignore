@@ -6,6 +6,7 @@
 !backend/**
 !frontend/
 !frontend/index.html
+!frontend/classic.html
 !frontend/js/
 !frontend/js/**
 !frontend/css/
