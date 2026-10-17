@@ -1,0 +1,36 @@
+name: Package Space Boxes V2 for SnapDeploy
+
+on:
+  push:
+    branches: [deploy/snapdeploy-ghcr]
+    paths:
+      - "v2/**"
+      - ".github/workflows/snapdeploy-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./v2
+          file: ./v2/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:snapdeploy-candidate
+            ghcr.io/${{ github.repository }}:snapdeploy-${{ github.sha }}
+          provenance: false
