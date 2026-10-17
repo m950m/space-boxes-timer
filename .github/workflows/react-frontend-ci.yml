@@ -1,0 +1,24 @@
+name: React frontend checks
+on:
+  push:
+    paths:
+      - 'v2/react-frontend/**'
+      - '.github/workflows/react-frontend-ci.yml'
+  pull_request:
+    paths:
+      - 'v2/react-frontend/**'
+      - '.github/workflows/react-frontend-ci.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v2/react-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun run build
