@@ -1,0 +1,80 @@
+# Provider-independent, loopback-only TLS stack. No automatic schema migrations.
+services:
+  db:
+    image: postgres:18.6-bookworm@sha256:9551dd5bf356409a21b31248f49b33bba9bb1877365f3a7e933aecd9af3cf52d
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ${SPACE_BOXES_DB_NAME:?required}
+      POSTGRES_PASSWORD: ${SPACE_BOXES_POSTGRES_PASSWORD:?required}
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      SPACE_BOXES_DB_USER: ${SPACE_BOXES_DB_USER:?required}
+      SPACE_BOXES_DB_PASSWORD: ${SPACE_BOXES_DB_PASSWORD:?required}
+    entrypoint: [sh, /opt/database-entrypoint.sh]
+    volumes:
+      - database:/var/lib/postgresql
+      - ./deploy/database-entrypoint.sh:/opt/database-entrypoint.sh:ro
+      - ./deploy/database-init.sh:/docker-entrypoint-initdb.d/10-app.sh:ro
+      - ./deploy/pg_hba.conf:/opt/pg_hba.conf:ro
+    secrets: [db_cert, db_key]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+  app:
+    image: ${SPACE_BOXES_IMAGE:-space-boxes-v2:local}
+    platform: linux/amd64
+    build:
+      context: .
+    environment:
+      DJANGO_DEBUG: '0'
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?required}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?required}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_TRUST_PROXY_HTTPS: '0'
+      SPACE_BOXES_DB_NAME: ${SPACE_BOXES_DB_NAME:?required}
+      SPACE_BOXES_DB_USER: ${SPACE_BOXES_DB_USER:?required}
+      SPACE_BOXES_DB_PASSWORD: ${SPACE_BOXES_DB_PASSWORD:?required}
+      SPACE_BOXES_DB_HOST: db
+      SPACE_BOXES_DB_PORT: '5432'
+      SPACE_BOXES_DB_SSLMODE: verify-full
+      PGSSLROOTCERT: /run/secrets/db_cert
+      SPACE_BOXES_EMAIL_HOST: ${SPACE_BOXES_EMAIL_HOST:?required}
+      SPACE_BOXES_EMAIL_PORT: ${SPACE_BOXES_EMAIL_PORT:-587}
+      SPACE_BOXES_EMAIL_USER: ${SPACE_BOXES_EMAIL_USER:-}
+      SPACE_BOXES_EMAIL_PASSWORD: ${SPACE_BOXES_EMAIL_PASSWORD:-}
+      SPACE_BOXES_EMAIL_USE_TLS: ${SPACE_BOXES_EMAIL_USE_TLS:-1}
+      SPACE_BOXES_EMAIL_USE_SSL: ${SPACE_BOXES_EMAIL_USE_SSL:-0}
+      SPACE_BOXES_FROM_EMAIL: ${SPACE_BOXES_FROM_EMAIL:?required}
+      SPACE_BOXES_BIND: 0.0.0.0:8000
+      SPACE_BOXES_WORKERS: ${SPACE_BOXES_WORKERS:-2}
+      SPACE_BOXES_TLS_CERT: /run/secrets/app_cert
+      SPACE_BOXES_TLS_KEY: /run/secrets/app_key
+      SPACE_BOXES_HEALTH_HOST: ${SPACE_BOXES_HEALTH_HOST:-localhost}
+    ports:
+      - '127.0.0.1:${SPACE_BOXES_HTTPS_PORT:-8443}:8000'
+    secrets: [app_cert, app_key, db_cert]
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/v2/staticfiles:size=64m,uid=10001,gid=10001,mode=0755
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+secrets:
+  app_cert:
+    file: ${SPACE_BOXES_TLS_DIR:?required}/app.crt
+  app_key:
+    file: ${SPACE_BOXES_TLS_DIR:?required}/app.key
+  db_cert:
+    file: ${SPACE_BOXES_TLS_DIR:?required}/db.crt
+  db_key:
+    file: ${SPACE_BOXES_TLS_DIR:?required}/db.key
+volumes:
+  database:

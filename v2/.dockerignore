@@ -1,0 +1,17 @@
+# Allow only runtime inputs; never send environment files, backups or test data.
+**
+!Dockerfile
+!requirements-release.txt
+!backend/
+!backend/**
+!frontend/
+!frontend/index.html
+!frontend/js/
+!frontend/js/**
+!frontend/css/
+!frontend/css/**
+!scripts/
+!scripts/start-staging.sh
+!scripts/container-health.py
+**/__pycache__/
+**/*.pyc
