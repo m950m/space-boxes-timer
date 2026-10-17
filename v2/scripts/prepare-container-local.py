@@ -23,6 +23,7 @@ def prepare(directory):
     values = {
         "DJANGO_SECRET_KEY": secrets.token_urlsafe(64),
         "DJANGO_ALLOWED_HOSTS": "localhost,127.0.0.1",
+        "SPACE_BOXES_PUBLIC_WEB_URL": "https://localhost",
         "SPACE_BOXES_DB_NAME": "space_boxes_v2",
         "SPACE_BOXES_DB_USER": "spaceboxes",
         "SPACE_BOXES_DB_PASSWORD": secrets.token_urlsafe(32),

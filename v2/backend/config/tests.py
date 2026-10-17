@@ -15,14 +15,11 @@ class FoundationSmokeTests(SimpleTestCase):
             '<div id="root"></div>',
             response.content.decode(),
         )
-        self.assertInHTML(
-            '<script type="module" src="/js/space-boxes-new.js"></script>',
-            response.content.decode(),
-        )
-        self.assertInHTML(
-            '<link rel="stylesheet" href="/css/space-boxes-new.css">',
-            response.content.decode(),
-        )
+        self.assertContains(response, 'type="module"')
+        self.assertNotContains(response, 'href="/classic"')
+
+    def test_classic_redirects_to_the_only_product_interface(self):
+        self.assertRedirects(self.client.get("/classic"), "/", fetch_redirect_response=False)
 
     def test_assets_are_served(self):
         for url, content_types in (

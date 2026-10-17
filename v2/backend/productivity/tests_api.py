@@ -245,12 +245,9 @@ class DataControlTests(TestCase):
         self.assertEqual(self.api.client.get("/api/v2/accounts/me").status_code, 401)
 
 
-class V1IsolationTests(TestCase):
-    def test_v1_surface_unchanged(self):
-        """The V1 static surface stays on its original routes."""
+class ReactSurfaceTests(TestCase):
+    def test_react_is_the_only_normal_interface(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        # The Higgsfield design is the V2 root; the previous planner remains accessible
-        # for rollback but is not the main user experience.
-        self.assertContains(response, "space-boxes-new.js")
-        self.assertContains(self.client.get("/classic"), "Local planner")
+        self.assertContains(response, '<div id="root"></div>')
+        self.assertRedirects(self.client.get("/classic"), "/")

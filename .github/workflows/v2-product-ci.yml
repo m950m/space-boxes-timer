@@ -1,0 +1,49 @@
+name: V2 product release gates
+on:
+  pull_request:
+    branches: [deploy/snapdeploy-ghcr, v2]
+    paths: ['v2/**', '.github/workflows/v2-product-ci.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v2-product-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  local-integration:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: v2/react-frontend/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-18 gjs
+      - run: |
+          python -m venv v2/.venv
+          v2/.venv/bin/pip install -r v2/requirements-release.txt
+          v2/.venv/bin/pip install -r v2/requirements-validation.txt
+      - run: npm ci
+        working-directory: v2/react-frontend
+      - name: PostgreSQL, migrations, production React, real browser and mocked failures
+        env:
+          SPACE_BOXES_BROWSER: /usr/bin/google-chrome
+        run: v2/.venv/bin/python v2/scripts/verify-local-product.py
+      - name: Existing planning and evidence domain suites
+        run: |
+          for suite in task-classification task-planning session-plan task-history task-hierarchy task-resources connected-payload connected-focus-mirror; do
+            gjs -m "v2/frontend/tests/$suite.test.js"
+          done
+          python v2/frontend/tests/run-focus-domain-tests.py
+          python v2/frontend/tests/run-focus-persistence-tests.py
+          python v2/frontend/tests/run-connected-sync-tests.py
+      - run: v2/.venv/bin/python v2/scripts/validate-openapi.py
+      - name: Package the candidate without publishing or deploying
+        run: docker build --platform linux/amd64 -t space-boxes-v2:ci -f v2/Dockerfile v2
+      - name: Disposable containers with HTTPS, secure cookies and restart persistence
+        run: v2/.venv/bin/python v2/scripts/verify-container.py

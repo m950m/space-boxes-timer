@@ -26,6 +26,9 @@ def required_env(name, default=""):
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
+REACT_DIST_DIR = Path(os.environ.get("SPACE_BOXES_REACT_DIST", BASE_DIR.parent / "react-frontend" / "dist"))
+if not REACT_DIST_DIR.is_dir():
+    REACT_DIST_DIR = FRONTEND_DIR / "react"
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
 SECRET_KEY = required_env(
@@ -78,7 +81,7 @@ ASGI_APPLICATION = "config.asgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [FRONTEND_DIR],
+        "DIRS": [REACT_DIST_DIR, FRONTEND_DIR],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -140,9 +143,14 @@ if env_bool("DJANGO_TRUST_PROXY_HTTPS", False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 EMAIL_BACKEND = (
-    "django.core.mail.backends.console.EmailBackend" if DEBUG
+    "django.core.mail.backends.locmem.EmailBackend" if DEBUG
     else "django.core.mail.backends.smtp.EmailBackend"
 )
+# Development mail is never printed with bearer secrets in server logs.
+# Browser integration can opt into a private disposable mailbox directory.
+if DEBUG and os.environ.get("SPACE_BOXES_DEV_EMAIL_DIR"):
+    EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+    EMAIL_FILE_PATH = os.environ["SPACE_BOXES_DEV_EMAIL_DIR"]
 EMAIL_HOST = required_env("SPACE_BOXES_EMAIL_HOST")
 EMAIL_PORT = int(os.environ.get("SPACE_BOXES_EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("SPACE_BOXES_EMAIL_USER", "")
@@ -170,3 +178,5 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR.parent / "staticfiles"
 STATICFILES_DIRS = [(name, FRONTEND_DIR / name) for name in ("js", "css")]
+if (REACT_DIST_DIR / "assets").is_dir():
+    STATICFILES_DIRS.append(("assets", REACT_DIST_DIR / "assets"))

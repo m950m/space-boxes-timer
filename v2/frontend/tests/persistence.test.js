@@ -21,7 +21,9 @@ async function open() {
 function closeAll() { for (const store of connections) store.close(); connections.clear(); }
 async function withUIStore(run) {
   const frame = document.createElement("iframe");
-  frame.src = "/";
+  // Legacy presentation fixture for its persistence-status regression checks.
+  // The actual product root is covered by React's real Django browser suite.
+  frame.src = "/classic.html";
   const loaded = new Promise((resolve) => { frame.onload = resolve; });
   document.body.append(frame);
   let store;

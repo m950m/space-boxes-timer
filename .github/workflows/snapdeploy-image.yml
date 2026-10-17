@@ -1,12 +1,12 @@
 name: Package Space Boxes V2 for SnapDeploy
 
 on:
-  push:
-    branches: [deploy/snapdeploy-ghcr]
-    paths:
-      - "v2/**"
-      - ".github/workflows/snapdeploy-image.yml"
   workflow_dispatch:
+    inputs:
+      promote_production:
+        description: 'Explicit production approval: update the watched tag only after staging and mail acceptance'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,6 +31,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:snapdeploy-candidate
             ghcr.io/${{ github.repository }}:snapdeploy-${{ github.sha }}
           provenance: false
+      - name: Promote only with explicit human release approval
+        if: ${{ inputs.promote_production }}
+        run: docker buildx imagetools create --tag "ghcr.io/${{ github.repository }}:snapdeploy-candidate" "ghcr.io/${{ github.repository }}:snapdeploy-${{ github.sha }}"

@@ -4,6 +4,7 @@ import http.cookiejar
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import socket
@@ -85,8 +86,10 @@ try:
             return body, response.headers
 
     body, headers = request("/")
-    assert "Local planner" in body and headers["X-Frame-Options"] == "DENY"
-    for asset in ("/js/app.js", "/css/planner.css", "/static/admin/css/base.css"):
+    assert '<div id="root"></div>' in body and headers["X-Frame-Options"] == "DENY"
+    react_assets = re.findall(r'(?:src|href)="(/assets/[^\"]+)"', body)
+    assert len(react_assets) >= 2
+    for asset in (*react_assets, "/static/admin/css/base.css"):
         body, headers = request(asset)
         assert body and headers["X-Content-Type-Options"] == "nosniff"
     for path in ("/tests/", "/RELEASE.md", "/.env", "/backend/config/settings.py"):
@@ -96,7 +99,21 @@ try:
     token = request("/api/v2/csrf")[0]["csrfToken"]
     request("/api/v2/sync/push", {"ops": []}, expected=403, csrf=False)
     credentials = {"email": "container@example.invalid", "password": secrets.token_urlsafe(24)}
-    request("/api/v2/accounts/register", credentials, expected=201, valid=True)
+    # SMTP is deliberately unavailable here: registration must fail honestly and
+    # roll back. Browser tests exercise registration/verification with file mail.
+    request("/api/v2/accounts/register", credentials, expected=503, valid=True)
+    request("/api/v2/accounts/login", credentials, expected=401, valid=True)
+    # Synthetic verified fixture ONLY in this verifier's new disposable DB.
+    # Feed the generated password on stdin, never in command arguments or logs.
+    source = ("from django.contrib.auth import get_user_model\n"
+              "from django.utils import timezone\n"
+              "from productivity.services import create_scope_for_account\n"
+              f"u = get_user_model().objects.create_user(email={credentials['email']!r}, password={credentials['password']!r})\n"
+              "u.email_verified_at = timezone.now()\nu.save(update_fields=['email_verified_at'])\ncreate_scope_for_account(u)\n")
+    seeded = subprocess.run(compose + ["exec", "-T", "app", "v2/.venv/bin/python", "v2/backend/manage.py", "shell"],
+                            cwd=root, input=source, text=True, stdout=log, stderr=subprocess.STDOUT)
+    assert seeded.returncode == 0
+    request("/api/v2/accounts/login", credentials, valid=True)
     token = request("/api/v2/csrf")[0]["csrfToken"]
     session = next(cookie for cookie in jar if cookie.name == "spaceboxes_session")
     assert session.secure and session.has_nonstandard_attr("HttpOnly") and session.get_nonstandard_attr("SameSite") == "Lax"
