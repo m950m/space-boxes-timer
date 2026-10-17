@@ -20,6 +20,7 @@
     ]
   },
   "include": [
-    "src/**/*"
+    "src/main.tsx",
+    "src/space-boxes/**/*"
   ]
 }
