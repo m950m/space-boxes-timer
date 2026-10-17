@@ -9,6 +9,7 @@ COPY --chown=10001:10001 backend v2/backend
 COPY --chown=10001:10001 frontend/index.html v2/frontend/index.html
 COPY --chown=10001:10001 frontend/js v2/frontend/js
 COPY --chown=10001:10001 frontend/css v2/frontend/css
+RUN python -c 'import gzip,pathlib; p=pathlib.Path("v2/frontend/js/space-boxes-new.js.gz"); p.with_suffix("").write_bytes(gzip.decompress(p.read_bytes())); p.unlink()'
 COPY --chown=10001:10001 scripts/start-staging.sh scripts/container-health.py v2/scripts/
 RUN mkdir v2/staticfiles && chown 10001:10001 v2/staticfiles
 USER 10001:10001
