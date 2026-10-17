@@ -13,7 +13,9 @@ os.environ.setdefault("DJANGO_DEBUG", "0")
 application = get_wsgi_application()
 
 if not settings.DEBUG:
-    for asset in ("js/app.js", "css/planner.css", "admin/css/base.css"):
+    if not (settings.REACT_DIST_DIR / "index.html").is_file():
+        raise ImproperlyConfigured("React production build missing: build the release image")
+    for asset in ("admin/css/base.css",):
         if not (settings.STATIC_ROOT / asset).is_file():
             raise ImproperlyConfigured("Release assets missing: run collectstatic before startup")
 
@@ -25,5 +27,5 @@ if not settings.DEBUG:
         max_age=0, add_headers_function=asset_headers,
     )
     # Preserve the shipped ES module URLs without publishing frontend tests/docs.
-    for directory in ("js", "css"):
+    for directory in ("js", "css", "assets"):
         application.add_files(settings.STATIC_ROOT / directory, prefix=f"/{directory}/")

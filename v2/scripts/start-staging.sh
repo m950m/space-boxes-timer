@@ -19,4 +19,5 @@ fi
 exec "$PYTHON" -m gunicorn --chdir v2/backend config.wsgi:application \
     --bind "${SPACE_BOXES_BIND:-127.0.0.1:8000}" \
     --workers "${SPACE_BOXES_WORKERS:-2}" --preload \
+    --no-control-socket \
     --forwarded-allow-ips='' --error-logfile - --capture-output "$@"

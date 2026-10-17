@@ -45,6 +45,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
@@ -119,10 +120,10 @@ class RateLimitBucket(models.Model):
         """
         now = timezone.now()
         with transaction.atomic():
-            bucket = cls.objects.select_for_update().filter(key=key).first()
-            if bucket is None:
-                cls.objects.create(key=key, window_start=now, count=1)
-                return True
+            # get_or_create resolves simultaneous first requests using the PK;
+            # then every increment (including the first) holds the row lock.
+            cls.objects.get_or_create(key=key, defaults={"window_start": now, "count": 0})
+            bucket = cls.objects.select_for_update().get(key=key)
             if now - bucket.window_start >= window:
                 bucket.window_start = now
                 bucket.count = 1
@@ -146,3 +147,41 @@ class RateLimitBucket(models.Model):
 def validate_email_address(value):
     validate_email(value)
     return value.lower()
+
+
+class EmailVerificationToken(models.Model):
+    """One-use 24-hour bearer token; the raw secret exists only in the email."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="email_verification_tokens",
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    request_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    TOKEN_HOURS = 24
+
+    @classmethod
+    def issue(cls, user, request_ip=None):
+        secret = secrets.token_urlsafe(32)
+        cls.objects.create(
+            user=user,
+            token_hash=hashlib.sha256(secret.encode()).hexdigest(),
+            expires_at=timezone.now() + timedelta(hours=cls.TOKEN_HOURS),
+            request_ip=request_ip,
+        )
+        return secret
+
+    @classmethod
+    def find_valid(cls, secret):
+        if not isinstance(secret, str) or not 20 <= len(secret) <= 200:
+            return None
+        return cls.objects.select_related("user").filter(
+            token_hash=hashlib.sha256(secret.encode()).hexdigest(),
+            used_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        ).first()

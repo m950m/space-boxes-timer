@@ -39,7 +39,7 @@ function validateTasks(tasks, scopeId) {
     createTaskPlanningRecord(task);
     if (task.ownershipScopeId !== scopeId) throw new TypeError("Task ownership does not match scope.");
     if (!["primary", "extra"].includes(task.classification)) throw new TypeError("Invalid classification.");
-    if (task.classification === "primary") {
+    if (task.classification === "primary" && !task.cancelledAt) {
       const count = (primaryCounts.get(task.planDayId) ?? 0) + 1;
       if (count > 3) throw new RangeError("A Plan Day permits at most three Primary tasks per scope.");
       primaryCounts.set(task.planDayId, count);
@@ -75,7 +75,7 @@ function applyCommand(tasks, scopeId, command) {
     return setTaskClassification(tasks, scopeId, command.taskId, command.classification);
   }
   if (command.type === "reschedule") {
-    return rescheduleTaskPlanningRecord(tasks, scopeId, command.taskId, command.planDayId, command.plannedStart);
+    return rescheduleTaskPlanningRecord(tasks, scopeId, command.taskId, command.planDayId, command.plannedStart, command.planDay);
   }
   if (command.type === "parent") return setTaskParent(tasks, scopeId, command.taskId, command.parentTaskId);
   if (command.type === "split") return splitTaskPlanningRecord(tasks, scopeId, command.taskId, command.newWork);

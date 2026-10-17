@@ -50,6 +50,27 @@ def push(scope, *ops):
     return SyncService(scope).push(list(ops))
 
 
+class PreferenceSyncTests(TestCase):
+    def test_singleton_preferences_survive_ack_pull_and_export(self):
+        from productivity.services import export_account_data
+        scope = make_scope()
+        result = push(scope,
+            {"kind": "prefs", "record": {"cadence": "weekly", "channels": ["email"]}},
+            {"kind": "config", "record": {"enabled": True, "domains": ["example.com"],
+                                          "noticeAcknowledgedAt": T0}})
+        self.assertEqual(result["results"][0]["record"]["cadence"], "weekly")
+        self.assertEqual(result["results"][1]["record"]["domains"], ["example.com"])
+        feed = SyncService(scope).pull(0)
+        self.assertEqual(feed["prefs"]["cadence"], "weekly")
+        self.assertEqual(feed["config"]["domains"], ["example.com"])
+        unchanged = SyncService(scope).pull(feed["scopeRevision"])
+        self.assertIsNone(unchanged["prefs"])
+        self.assertIsNone(unchanged["config"])
+        exported = export_account_data(OwnershipScope.objects.get(pk=scope.pk))
+        self.assertEqual(exported["prefs"]["cadence"], "weekly")
+        self.assertTrue(exported["config"]["enabled"])
+
+
 class PlanDayTests(TestCase):
     def setUp(self):
         self.scope = make_scope()
@@ -91,6 +112,14 @@ class TaskSyncTests(TestCase):
         self.assertEqual(retry["results"][0]["status"], "duplicate")
         # The canonical record comes back so the client can acknowledge it.
         self.assertEqual(retry["results"][0]["record"]["id"], record["id"])
+
+    def test_cancelled_primary_does_not_reserve_a_daily_slot(self):
+        for index in range(3):
+            record = task_record(classification="primary", cancelledAt=T0 if index == 0 else None)
+            self.accepted({"kind": "task", "record": record})
+        self.accepted({"kind": "task", "record": task_record(classification="primary")})
+        rejected = push(self.scope, {"kind": "task", "record": task_record(classification="primary")})
+        self.assertEqual(rejected["results"][0]["status"], "rejected")
 
     def test_stale_edit_is_conflict_not_last_write_wins(self):
         record = task_record()

@@ -1,5 +1,10 @@
 # V2 release preparation and local staging
 
+Current React product candidate, executable gates and isolated staging inputs:
+[RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md). The checkpoint below is historical;
+current packaging requires the React build, and development mail uses a private
+test backend rather than logging recovery tokens to the console.
+
 For the subsequently added provider-independent Docker stack, TLS/container
 rehearsal and implemented OpenAPI contract, see [CONTAINERS.md](CONTAINERS.md).
 Prepared (not applied) zero-cost hosting configuration for Render Free and
@@ -138,6 +143,9 @@ artifact to update the lock. Reinstall from that lock and run `pip check`, backe
 tests and the staging rehearsal. Startup must not resolve unbounded dependencies.
 
 ## Reproducible local verification
+
+Historical procedure below: `verify-staging.py` is retired. Use the disposable
+React/PostgreSQL and HTTPS container gates in [RELEASE-CANDIDATE.md](RELEASE-CANDIDATE.md).
 
 With a reachable local PostgreSQL server, its client tools (`pg_dump` and
 `pg_restore` matching the server version), OpenSSL and an isolated test role

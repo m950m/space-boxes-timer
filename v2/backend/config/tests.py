@@ -9,21 +9,17 @@ class FoundationSmokeTests(SimpleTestCase):
     def test_frontend_document_and_module_reference(self):
         response = self.client.get("/")
 
-        self.assertContains(response, "Local planner")
+        self.assertContains(response, "Space Boxes")
         self.assertEqual(response["Content-Type"], "text/html; charset=utf-8")
         self.assertInHTML(
-            '<p id="v2-startup-status" role="status" aria-live="polite" '
-            'aria-atomic="true">Loading local plans…</p>',
+            '<div id="root"></div>',
             response.content.decode(),
         )
-        self.assertInHTML(
-            '<script type="module" src="./js/app.js"></script>',
-            response.content.decode(),
-        )
-        self.assertInHTML(
-            '<link rel="stylesheet" href="./css/planner.css">',
-            response.content.decode(),
-        )
+        self.assertContains(response, 'type="module"')
+        self.assertNotContains(response, 'href="/classic"')
+
+    def test_classic_redirects_to_the_only_product_interface(self):
+        self.assertRedirects(self.client.get("/classic"), "/", fetch_redirect_response=False)
 
     def test_assets_are_served(self):
         for url, content_types in (

@@ -302,7 +302,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix="v2-visual-") as profile:
             with helpers.browser_session(browser, profile) as client:
                 print(f"Browser: {client.call('Browser.getVersion')['product']}", flush=True)
-                suite(client, f"http://127.0.0.1:{server.server_port}/", args.screenshots)
+                suite(client, f"http://127.0.0.1:{server.server_port}/classic.html", args.screenshots)
                 if client.errors:
                     raise AssertionError(client.errors)
         print(f"PASS {len(checks)} visual acceptance checks in real Chrome")

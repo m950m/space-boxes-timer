@@ -93,6 +93,15 @@ test("demotion releases capacity for a different task", () => {
   assert(tasks[0].classification === "primary", "Original classification was changed");
 });
 
+test("cancellation releases capacity without deleting history", () => {
+  const tasks = freeze([
+    ...["a", "b", "c"].map((id) => task(id, { classification: "primary" })),
+    task("cancelled", { classification: "primary", cancelledAt: 123, history: ["retained"] }),
+  ]);
+  const result = change(tasks, "a", "primary");
+  assert(result[3] === tasks[3], "Cancelled history must remain intact");
+});
+
 test("another Plan Day has independent capacity", () => {
   const tasks = freeze([
     ...["a", "b", "c"].map((id) => task(id, { classification: "primary" })),

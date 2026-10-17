@@ -130,7 +130,7 @@ export function buildConnectOps({ tasks, focusState }) {
   }
   const ops = [];
   for (const dayId of planDayIds(tasks)) {
-    ops.push({ kind: "plan_day", record: { id: dayId, timezone: focusState.timezone } });
+    ops.push({ kind: "plan_day", record: { id: dayId, timezone: tasks.find(task => task.planDayId === dayId)?.planDay?.timezone || focusState.timezone } });
   }
   for (const task of tasks) {
     ops.push({ kind: "task", baseRevision: 0, record: wireTaskRecord(task) });

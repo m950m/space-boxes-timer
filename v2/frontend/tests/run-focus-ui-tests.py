@@ -273,7 +273,7 @@ def main():
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Handler, directory=str(ROOT)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{server.server_port}/"
+    url = f"http://127.0.0.1:{server.server_port}/classic.html"
     try:
         with tempfile.TemporaryDirectory(prefix="v2-focus-ui-", ignore_cleanup_errors=True) as profile:
             for phase in ("suite", "restart-paused", "restart-running"):

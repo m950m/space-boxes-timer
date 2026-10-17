@@ -1,6 +1,6 @@
 """Real Chrome focus/restart tests plus existing persistence regressions.
 
-Serves the on-disk fixtures unchanged; all existing assertions and scenarios run.
+Serves isolated on-disk test fixtures; all persistence assertions and scenarios run.
 """
 
 import functools

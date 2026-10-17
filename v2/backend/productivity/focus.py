@@ -133,12 +133,12 @@ class FocusEngine:
 
         if ctype == "start":
             return self._start(command, at, context_id, prior, new_revision)
+        if ctype == "reconcile":
+            return self._reconcile(command, at, context_id, prior, new_revision)
         if prior is None:
             raise ApiError("no_reservation", "No active reservation.", 409)
         if ctype != "transfer" and context_id != prior.controller_id:
             raise ApiError("stale_controller", "Stale or observing controller.", 409)
-        if ctype == "reconcile":
-            return self._reconcile(command, at, context_id, prior, new_revision)
         return self._control(ctype, command, at, context_id, prior, new_revision)
 
     # -- start ---------------------------------------------------------------
@@ -332,13 +332,14 @@ class FocusEngine:
         evidence.end_at = at
         evidence.elapsed_ms = elapsed_ms
         evidence.continuity = certainty
+        evidence.scope_revision = self.scope.revision
         if evidence.kind == "focus" and (force_uncertain or certainty == "uncertain"):
             evidence.kind = "uncertain"
             evidence.reason = (
                 "explicit-control-recovery" if force_uncertain
                 else observation.get("reason", "uncertain")
             )
-        evidence.save(update_fields=["end_at", "elapsed_ms", "continuity", "kind", "reason"])
+        evidence.save(update_fields=["end_at", "elapsed_ms", "continuity", "kind", "reason", "scope_revision"])
         return evidence
 
     def _open_evidence(self, evidence_id, session, kind, at, context_id, version):

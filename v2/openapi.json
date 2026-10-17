@@ -83,7 +83,7 @@
       "post": {
         "operationId": "register",
         "summary": "register",
-        "description": "Normalizes email to lowercase, creates scope, rotates session, signs in. No registration-verification endpoint exists.",
+        "description": "Creates an inactive account and ownership scope; sends a single-use 24-hour verification link. Does not sign in. Existing email receives the same neutral 202 envelope. SMTP failure returns generic 503 and rolls back the new account. Existing active users are grandfathered by migration; disabled legacy users remain disabled.",
         "security": [
           {
             "csrfCookie": [],
@@ -91,18 +91,8 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountResponse"
-                }
-              }
-            }
-          },
           "400": {
-            "description": "invalid_json, validation (email/password validators), or generic registration_failed; invalid Host returns Django HTML",
+            "description": "invalid_json or email/password validation; invalid Host returns Django HTML",
             "content": {
               "application/json": {
                 "schema": {
@@ -152,6 +142,36 @@
               "Location": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Neutral verification instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationPending"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Registration IP limit reached; wait before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Registration unavailable; no automatic mutation retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -497,7 +517,7 @@
       "post": {
         "operationId": "request_recovery",
         "summary": "request recovery",
-        "description": "Known/unknown/throttled email produces the same 200 body. Real SMTP failure can produce 500. No recovery secret is returned in the API.",
+        "description": "Neutral response whether eligible, missing, throttled or mail unavailable. On delivery error no unusable recovery token is retained and provider details are never logged.",
         "security": [
           {
             "csrfCookie": [],
@@ -1296,6 +1316,219 @@
                 "required": [
                   "password"
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/verify": {
+      "post": {
+        "operationId": "verifyEmail",
+        "summary": "Verify email",
+        "description": "Redeem a single-use 24-hour token under account and token row locks. Activates account without signing in. Token is supplied in JSON; emailed link uses a fragment, never a URL query. All outstanding verification tokens for that account are consumed.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "invalid_json or invalid/expired/used token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many verification attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Email verified; sign in explicitly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "verified"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "verified": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationToken"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/verify/resend": {
+      "post": {
+        "operationId": "resendVerification",
+        "summary": "Resend verification",
+        "description": "Neutral response for known, unknown, verified, disabled legacy and throttled addresses. Only pending registrations receive mail. Failed mail rolls back token replacement; previous valid link remains usable. No delivery guarantee is made.",
+        "security": [
+          {
+            "csrfCookie": [],
+            "csrfHeader": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "invalid_json or invalid/expired/used token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Django CSRF rejection (HTML), before view authentication or JSON parsing. Missing/mismatched cookie/header or untrusted Origin/Referer.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed by Django decorator; empty body, Allow header.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled application/database/SMTP exception; generic Django HTML in release. Not all malformed nested payloads are normalized to ApiError.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "Release-only plain HTTP redirect to HTTPS by SecurityMiddleware; not a successful API response.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Neutral verification request response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "message"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
               }
             }
           }
@@ -3000,6 +3233,38 @@
           "reservation",
           "activity"
         ]
+      },
+      "VerificationPending": {
+        "type": "object",
+        "required": [
+          "ok",
+          "verificationRequired",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "verificationRequired": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "VerificationToken": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 200
+          }
+        }
       }
     }
   }

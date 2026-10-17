@@ -172,7 +172,7 @@ export function updateTaskPlanningRecord(record, changes) {
  * Use the collection boundary to enforce the destination Primary limit.
  */
 export function rescheduleTaskPlanningRecord(
-  tasks, ownershipScopeId, taskId, planDayId, plannedStart,
+  tasks, ownershipScopeId, taskId, planDayId, plannedStart, planDay,
 ) {
   if (!Array.isArray(tasks)) {
     throw new TypeError("tasks must be an array of existing task records.");
@@ -187,7 +187,8 @@ export function rescheduleTaskPlanningRecord(
     throw new RangeError("Task was not found in the requested ownership scope.");
   }
   validatePlanning(target);
-  const moved = createTaskPlanningRecord({ ...target, planDayId, plannedStart });
+  const moved = createTaskPlanningRecord({ ...target, planDayId, plannedStart,
+    ...(planDay === undefined ? {} : {planDay}) });
   const result = tasks.map((task) => task === target ? moved : task);
   return setTaskClassification(result, ownershipScopeId, taskId, target.classification);
 }

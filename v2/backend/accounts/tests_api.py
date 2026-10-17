@@ -19,28 +19,50 @@ class JsonClientMixin:
 
 
 class RegistrationTests(JsonClientMixin, TestCase):
-    def test_register_creates_account_scope_and_session(self):
+    def test_register_requires_verified_email_before_login(self):
         response = self.post_json("/api/v2/accounts/register", {
             "email": "New@Example.com", "password": PASSWORD,
         })
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.json()["verificationRequired"])
         user = User.objects.get(email="new@example.com")
         self.assertTrue(user.ownership_scope)
-        body = response.json()
-        self.assertEqual(body["account"]["email"], "new@example.com")
-        self.assertTrue(body["account"]["scopeId"])
-        # The authenticated session cookie identifies the account.
-        me = self.client.get("/api/v2/accounts/me")
-        self.assertEqual(me.json()["account"]["email"], "new@example.com")
+        self.assertFalse(user.is_active)
+        self.assertEqual(self.client.get("/api/v2/accounts/me").status_code, 401)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Confirm your Space Boxes email", mail.outbox[0].subject)
+        token = self._token()
+        verified = self.post_json("/api/v2/accounts/verify", {"token": token})
+        self.assertEqual(verified.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertIsNotNone(user.email_verified_at)
+        self.assertEqual(self.post_json("/api/v2/accounts/verify", {"token": token}).status_code, 400)
+        login_response = self.post_json("/api/v2/accounts/login", {
+            "email": user.email, "password": PASSWORD,
+        })
+        self.assertEqual(login_response.status_code, 200)
+
+    def _token(self):
+        from urllib.parse import parse_qs, urlparse
+        link = next(line.split(": ", 1)[1] for line in mail.outbox[0].body.splitlines()
+                    if line.startswith("Confirm your email: "))
+        from django.conf import settings
+        self.assertTrue(link.startswith(settings.SPACE_BOXES_PUBLIC_WEB_URL + "/#verify="))
+        self.assertFalse(urlparse(link).query)
+        return parse_qs(urlparse(link).fragment)["verify"][0]
 
     def test_register_duplicate_is_generic(self):
         User.objects.create_user(email="taken@example.com", password=PASSWORD)
-        response = self.post_json("/api/v2/accounts/register", {
+        known = self.post_json("/api/v2/accounts/register", {
             "email": "taken@example.com", "password": PASSWORD,
         })
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"]["code"], "registration_failed")
-        self.assertNotIn("exists", response.json()["error"]["message"])
+        fresh = self.post_json("/api/v2/accounts/register", {
+            "email": "available@example.com", "password": PASSWORD,
+        })
+        self.assertEqual(known.status_code, 202)
+        self.assertEqual(known.json(), fresh.json())
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_register_rejects_weak_password_and_bad_email(self):
         for payload in (
@@ -52,6 +74,81 @@ class RegistrationTests(JsonClientMixin, TestCase):
                 response = self.post_json("/api/v2/accounts/register", payload)
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json()["error"]["code"], "validation")
+
+    def test_invalid_verification_token(self):
+        response = self.post_json("/api/v2/accounts/verify", {"token": "invalid"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_resend_is_generic_for_unknown_account(self):
+        self.post_json("/api/v2/accounts/register", {
+            "email": "new@example.com", "password": PASSWORD,
+        })
+        first = self.post_json("/api/v2/accounts/verify/resend", {"email": "new@example.com"})
+        unknown = self.post_json("/api/v2/accounts/verify/resend", {"email": "missing@example.com"})
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(unknown.status_code, 202)
+        self.assertEqual(first.json(), unknown.json())
+        self.assertEqual(len(mail.outbox), 2)
+        from .models import EmailVerificationToken
+        self.assertEqual(EmailVerificationToken.objects.filter(user__email="new@example.com",
+            used_at__isnull=True).count(), 1)
+
+    def test_email_send_failure_rolls_back_new_account(self):
+        from unittest.mock import patch
+        with patch("accounts.api.send_verification_email", side_effect=OSError("SMTP unavailable")):
+            response = self.post_json("/api/v2/accounts/register", {
+                "email": "fail@example.com", "password": PASSWORD,
+            })
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(User.objects.filter(email="fail@example.com").exists())
+
+    def test_expired_and_replaced_tokens_cannot_activate(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import EmailVerificationToken
+        self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD})
+        first = self._token()
+        self.post_json("/api/v2/accounts/verify/resend", {"email": "new@example.com"})
+        self.assertEqual(self.post_json("/api/v2/accounts/verify", {"token": first}).status_code, 400)
+        EmailVerificationToken.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+        from urllib.parse import parse_qs, urlparse
+        link = mail.outbox[-1].body.split("Confirm your email: ")[1].splitlines()[0]
+        token = parse_qs(urlparse(link).fragment)["verify"][0]
+        self.assertEqual(self.post_json("/api/v2/accounts/verify", {"token": token}).status_code, 400)
+        self.assertFalse(User.objects.get(email="new@example.com").is_active)
+
+    def test_resend_failure_keeps_previous_token_and_logs_no_provider_details(self):
+        from unittest.mock import patch
+        self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD})
+        token = self._token()
+        with patch("accounts.api.send_verification_email", side_effect=OSError("secret-bearer-token")):
+            with self.assertLogs("accounts.api", level="ERROR") as logs:
+                response = self.post_json("/api/v2/accounts/verify/resend", {"email": "new@example.com"})
+        self.assertEqual(response.status_code, 202)
+        self.assertNotIn("secret-bearer-token", str(logs.output))
+        self.assertEqual(self.post_json("/api/v2/accounts/verify", {"token": token}).status_code, 200)
+
+    def test_zero_messages_sent_is_a_delivery_failure(self):
+        from unittest.mock import patch
+        with patch("accounts.verification.send_mail", return_value=0):
+            response = self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD})
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(User.objects.filter(email="new@example.com").exists())
+
+    def test_resend_budget_and_registration_budget(self):
+        self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD})
+        for _ in range(5):
+            self.assertEqual(self.post_json("/api/v2/accounts/verify/resend", {"email": "new@example.com"}).status_code, 202)
+        self.assertEqual(len(mail.outbox), 4)
+        for _ in range(11):
+            self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD})
+        self.assertEqual(self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD}).status_code, 429)
+
+    def test_resend_cannot_reactivate_legacy_disabled_account(self):
+        User.objects.create_user(email="disabled@example.com", password=PASSWORD, is_active=False)
+        response = self.post_json("/api/v2/accounts/verify/resend", {"email": "disabled@example.com"})
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class LoginLogoutTests(JsonClientMixin, TestCase):
@@ -123,6 +220,16 @@ class RecoveryTests(JsonClientMixin, TestCase):
         self.assertEqual(known.json(), unknown.json())
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("single-use", mail.outbox[0].body)
+
+    def test_delivery_failure_keeps_response_neutral_and_rolls_back_token(self):
+        from unittest.mock import patch
+        with patch("accounts.api.send_recovery_email", side_effect=OSError("private-mail-secret")):
+            with self.assertLogs("accounts.api", level="ERROR") as logs:
+                known = self.request()
+        unknown = self.request(email="unknown@example.com")
+        self.assertEqual(known.json(), unknown.json())
+        self.assertNotIn("private-mail-secret", str(logs.output))
+        self.assertFalse(RecoveryToken.objects.exists())
 
     def test_confirm_changes_password_single_use_and_revokes_sessions(self):
         self.post_json("/api/v2/accounts/login", {

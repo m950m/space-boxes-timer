@@ -12,22 +12,24 @@
 # stack) and uses healthCheckPath below instead.
 services:
   - type: web
-    name: space-boxes-v2
+    name: space-boxes-v2-isolated-staging
     runtime: docker
     plan: free
     dockerfilePath: v2/Dockerfile
     dockerContext: v2
     healthCheckPath: /
-    autoDeploy: true
+    autoDeployTrigger: "off"
     envVars:
       - key: DJANGO_DEBUG
         value: "0"
       - key: DJANGO_SECRET_KEY
-        generateValue: true
+        sync: false # Supply >=50 random characters; Render's generated 256-bit value is shorter.
       - key: DJANGO_ALLOWED_HOSTS
         sync: false # e.g. space-boxes-v2.onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
         sync: false # e.g. https://space-boxes-v2.onrender.com
+      - key: SPACE_BOXES_PUBLIC_WEB_URL
+        sync: false # Exact HTTPS origin of this isolated service, no path.
       - key: DJANGO_TRUST_PROXY_HTTPS
         value: "1" # Only valid while the Render proxy is the sole ingress.
       - key: SPACE_BOXES_DB_NAME
@@ -49,7 +51,7 @@ services:
       - key: SPACE_BOXES_EMAIL_HOST
         sync: false # Owner-selected relay; no provider is chosen here.
       - key: SPACE_BOXES_EMAIL_PORT
-        value: "587"
+        value: "2525" # Brevo STARTTLS alternative; Render Free blocks 25/465/587.
       - key: SPACE_BOXES_EMAIL_USE_TLS
         value: "1"
       - key: SPACE_BOXES_EMAIL_USE_SSL

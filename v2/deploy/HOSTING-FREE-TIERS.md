@@ -1,5 +1,10 @@
 # Free-tier hosting readiness — Render Free web service + Supabase Free PostgreSQL
 
+Current candidate: [release notes and isolated staging setup](../RELEASE-CANDIDATE.md).
+The Blueprint now names a separate staging service, disables automatic deploys,
+requires an explicit public URL and uses SMTP port 2525 for Brevo compatibility.
+The historical checkpoint below does not prove the new provider integration.
+
 Prepared for the owner's zero-cost constraint. **Nothing is deployed, no
 account exists, and no cloud resource has been created by this delivery**;
 [render.yaml](render.yaml) is a declaration that applies only when the owner

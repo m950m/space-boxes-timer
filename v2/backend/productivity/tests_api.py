@@ -53,7 +53,17 @@ def register(email="a@example.com", password=PASSWORD):
     api = AuthenticatedJsonClient(client)
     api.prime_csrf()
     response = api.post("/api/v2/accounts/register", {"email": email, "password": password})
-    assert response.status_code == 201, response.content
+    assert response.status_code == 202, response.content
+    from django.core import mail
+    from urllib.parse import parse_qs, urlparse
+    link = next(line.split(": ", 1)[1] for line in mail.outbox[-1].body.splitlines()
+                if line.startswith("Confirm your email: "))
+    token = parse_qs(urlparse(link).fragment)["verify"][0]
+    verified = api.post("/api/v2/accounts/verify", {"token": token})
+    assert verified.status_code == 200, verified.content
+    logged_in = api.post("/api/v2/accounts/login", {"email": email, "password": password})
+    assert logged_in.status_code == 200, logged_in.content
+    api.prime_csrf()
     return api
 
 
@@ -235,10 +245,9 @@ class DataControlTests(TestCase):
         self.assertEqual(self.api.client.get("/api/v2/accounts/me").status_code, 401)
 
 
-class V1IsolationTests(TestCase):
-    def test_v1_surface_unchanged(self):
-        """The V1 static surface stays on its original routes."""
+class ReactSurfaceTests(TestCase):
+    def test_react_is_the_only_normal_interface(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        # V2 root serves the planner document.
-        self.assertContains(response, "Local planner")
+        self.assertContains(response, '<div id="root"></div>')
+        self.assertRedirects(self.client.get("/classic"), "/")

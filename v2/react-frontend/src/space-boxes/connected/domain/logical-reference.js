@@ -1,5 +1,2 @@
-export function requireReference(value, name) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError(`${name} must be a non-empty logical reference.`);
-  }
-}
+// Use the existing tested V2 domain service; keep one implementation.
+export * from "../../../../../frontend/js/domain/logical-reference.js";

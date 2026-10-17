@@ -8,11 +8,30 @@
  */
 
 let csrfToken = null;
+export class ApiError extends Error {
+  constructor(message, code = "network", status = 0) {
+    super(message); this.name = "ApiError"; this.code = code; this.status = status;
+  }
+}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function transport(path, init = {}) {
+  const attempts = (init.method ?? "GET") === "GET" ? 3 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    let response;
+    try { response = await fetch(path, {...init, cache: "no-store", signal: AbortSignal.timeout(15000)}); }
+    catch {
+      if (attempt + 1 === attempts) throw new ApiError("Connection failed. Changes are unconfirmed. Refresh saved state before retrying.");
+    }
+    if (response && ![502, 503, 504].includes(response.status)) return response;
+    if (attempt + 1 === attempts) throw new ApiError("The server is waking or unavailable. Changes are unconfirmed; refresh before retrying.", "unavailable", response?.status ?? 0);
+    await sleep(1000 * (attempt + 1));
+  }
+}
 
 async function primeCsrf(force = false) {
   if (csrfToken && !force) return csrfToken;
-  const response = await fetch("/api/v2/csrf", { credentials: "same-origin" });
-  if (!response.ok) throw { code: "network", message: "CSRF token unavailable.", status: response.status };
+  const response = await transport("/api/v2/csrf", { credentials: "same-origin" });
+  if (!response.ok) throw new ApiError("Protected session unavailable. Try again later.", "csrf", response.status);
   csrfToken = (await response.json()).csrfToken;
   return csrfToken;
 }
@@ -25,7 +44,7 @@ async function send(method, path, body, token) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET") headers["X-CSRFToken"] = token;
-  return fetch(path, {
+  return transport(path, {
     method,
     credentials: "same-origin",
     headers,
@@ -55,7 +74,7 @@ export async function request(method, path, body) {
   }
   if (!response.ok) {
     const error = await parseError(response);
-    throw { ...error, status: response.status };
+    throw new ApiError(response.status === 429 ? "Too many requests. Wait before trying again." : error.message, error.code, response.status);
   }
   const text = await response.text();
   return text ? JSON.parse(text) : {};
