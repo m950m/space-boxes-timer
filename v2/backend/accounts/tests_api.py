@@ -144,6 +144,12 @@ class RegistrationTests(JsonClientMixin, TestCase):
             self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD})
         self.assertEqual(self.post_json("/api/v2/accounts/register", {"email": "new@example.com", "password": PASSWORD}).status_code, 429)
 
+    def test_resend_cannot_reactivate_legacy_disabled_account(self):
+        User.objects.create_user(email="disabled@example.com", password=PASSWORD, is_active=False)
+        response = self.post_json("/api/v2/accounts/verify/resend", {"email": "disabled@example.com"})
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(len(mail.outbox), 0)
+
 
 class LoginLogoutTests(JsonClientMixin, TestCase):
     def setUp(self):
@@ -214,6 +220,16 @@ class RecoveryTests(JsonClientMixin, TestCase):
         self.assertEqual(known.json(), unknown.json())
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("single-use", mail.outbox[0].body)
+
+    def test_delivery_failure_keeps_response_neutral_and_rolls_back_token(self):
+        from unittest.mock import patch
+        with patch("accounts.api.send_recovery_email", side_effect=OSError("private-mail-secret")):
+            with self.assertLogs("accounts.api", level="ERROR") as logs:
+                known = self.request()
+        unknown = self.request(email="unknown@example.com")
+        self.assertEqual(known.json(), unknown.json())
+        self.assertNotIn("private-mail-secret", str(logs.output))
+        self.assertFalse(RecoveryToken.objects.exists())
 
     def test_confirm_changes_password_single_use_and_revokes_sessions(self):
         self.post_json("/api/v2/accounts/login", {

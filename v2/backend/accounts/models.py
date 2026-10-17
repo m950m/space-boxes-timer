@@ -120,10 +120,10 @@ class RateLimitBucket(models.Model):
         """
         now = timezone.now()
         with transaction.atomic():
-            bucket = cls.objects.select_for_update().filter(key=key).first()
-            if bucket is None:
-                cls.objects.create(key=key, window_start=now, count=1)
-                return True
+            # get_or_create resolves simultaneous first requests using the PK;
+            # then every increment (including the first) holds the row lock.
+            cls.objects.get_or_create(key=key, defaults={"window_start": now, "count": 0})
+            bucket = cls.objects.select_for_update().get(key=key)
             if now - bucket.window_start >= window:
                 bucket.window_start = now
                 bucket.count = 1

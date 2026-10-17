@@ -144,7 +144,10 @@ def resend_verification(request):
         return JsonResponse(response, status=202)
     if not allow("verify_resend_email", email):
         return JsonResponse(response, status=202)
-    user = User.objects.filter(email=email, is_active=False, email_verified_at__isnull=True).first()
+    # Legacy disabled accounts never entered registration verification. Do not
+    # turn resend into an account-reactivation path for those accounts.
+    user = User.objects.filter(email=email, is_active=False, email_verified_at__isnull=True,
+                               email_verification_tokens__isnull=False).first()
     if user:
         try:
             with transaction.atomic():
@@ -223,9 +226,13 @@ def recovery_request(request):
     if ok_account and ok_ip:
         user = User.objects.filter(email=email, is_active=True).first()
         if user:
-            secret = RecoveryToken.issue(user, request_ip=client_ip(request))
-            send_recovery_email(user, secret)
-    return JsonResponse({"ok": True, "message": "If the account exists, a recovery email was sent."})
+            try:
+                with transaction.atomic():
+                    secret = RecoveryToken.issue(user, request_ip=client_ip(request))
+                    send_recovery_email(user, secret)
+            except Exception:
+                logger.error("Space Boxes recovery delivery failed")
+    return JsonResponse({"ok": True, "message": "If eligible and delivery is available, recovery instructions will be sent. If no message arrives, try again later."})
 
 
 @require_POST
